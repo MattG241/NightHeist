@@ -435,6 +435,7 @@ static void perform(Heist *h, const Action *a)
             h->mg = MG_KIND_LOCK;
             h->mg_target = a->target;
             lp_init(&h->lp, d->lock_level, &h->rng);
+            h->lp.npins = NH_MAX(2, h->lp.npins - h->perks.pick_bonus); /* picks upgrade, locksmith */
             return;
         }
         open_door(h, a->target);
@@ -468,6 +469,7 @@ static void perform(Heist *h, const Action *a)
         h->mg = MG_KIND_HACK;
         h->mg_target = a->target;
         hk_init(&h->hk, NH_MAX(1, h->plan.ent[a->target].tier), &h->rng);
+        h->hk.layers = NH_MAX(1, h->hk.layers - h->perks.hack_bonus);
         break;
     case ACT_CONSOLE:
         h->cams_looped = 120.0f;
@@ -659,7 +661,7 @@ void interact_update(Heist *h, const NhInput *in, const GameSettings *gs)
         if (h->mg == MG_KIND_LOCK) {
             ev = lp_tick(&h->lp, in->remote_roll, a, dt);
             if (ev == MG_SLIP)
-                heist_noise(h, h->player.pos, 3.0f, NH_NOISE_GADGET);
+                heist_noise(h, h->player.pos, h->perks.noisy_slips ? 5.0f : 3.0f, NH_NOISE_GADGET);
             if (ev == MG_TICK || ev == MG_SET)
                 h->rumble_ticks = NH_MAX(h->rumble_ticks, ev == MG_SET ? 6 : 2);
         } else if (h->mg == MG_KIND_SAFE) {

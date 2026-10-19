@@ -30,6 +30,9 @@ int nh_test_checks;
     X(test_minigames)          \
     X(test_job)                \
     X(test_security)           \
+    X(test_save)               \
+    X(test_board)              \
+    X(test_economy)            \
     X(test_gen_solvable)
 
 #define X(name) void name(void);

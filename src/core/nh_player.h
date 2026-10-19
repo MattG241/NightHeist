@@ -72,6 +72,7 @@ typedef struct NhPlayer {
     int floor;
     NhNoise noises[4];
     int nnoise;
+    float noise_scale;     /* footstep loudness (soft soles, rain); 0 = default 1 */
 } NhPlayer;
 
 void nh_player_init(NhPlayer *p, NhVec3 feet, float yaw);

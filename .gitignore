@@ -7,3 +7,6 @@
 *.map
 __pycache__/
 /apps/NightHeist/boot.dol
+apps/NightHeist/save.dat
+apps/NightHeist/save.bak
+apps/NightHeist/playlog.csv

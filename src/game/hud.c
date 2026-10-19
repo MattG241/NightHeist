@@ -367,9 +367,25 @@ void hud_draw_map(const Heist *h)
         if (o->ent < 0 || o->done)
             continue;
         const NhEntity *e = &h->plan.ent[o->ent];
-        if (e->floor != f || !h->explored[e->room])
+        if (e->floor != f || (!h->explored[e->room] && !h->perks.map_objectives))
             continue;
         text_rect(ox + e->pos.x / LV_CELL * cs - 4, oy + e->pos.z / LV_CELL * cs - 4, 8, 8, HI);
+    }
+    /* The lookout calls out guards and cameras. */
+    if (h->perks.map_guards) {
+        for (int i = 0; i < h->ai.n; i++) {
+            const AiGuard *g = &h->ai.g[i];
+            if (!g->active || g->floor != f)
+                continue;
+            NhColor gc = g->state == AS_KO ? DIM : g->state == AS_ALERT ? RED : nh_rgba(230, 120, 230, 255);
+            text_rect(ox + g->pos.x / LV_CELL * cs - 3, oy + g->pos.z / LV_CELL * cs - 3, 6, 6, gc);
+        }
+        for (int i = 0; i < h->sec.ncam; i++) {
+            const SecCamera *c = &h->sec.cam[i];
+            if (lv_floor_of(c->pos.y) != f)
+                continue;
+            text_rect(ox + c->pos.x / LV_CELL * cs - 2, oy + c->pos.z / LV_CELL * cs - 2, 4, 4, RED);
+        }
     }
     /* The van and the player */
     if (f == 0)
@@ -437,11 +453,11 @@ void hud_draw_summary(const Heist *h)
     y += 22;
     text_printf(60, y, 2, HI, "Payout          $%d", r->payout * 10);
     y += 30;
-    text_printf(60, y, 2, FG, "Stealth %d%%%s   heat +%d", r->stealth, r->ghost ? "  GHOST" : "", r->heat);
+    text_printf(60, y, 2, FG, "Stealth %d%%%s   heat +%d", r->stealth, r->ghost ? "  GHOST" : "", r->heat * 5);
     y += 22;
-    text_printf(60, y, 2, DIM, "Time %d:%02d  spotted %d  takedowns %d  alarms %d  locks %d", (int)j->time / 60,
-                (int)j->time % 60, j->spotted + j->camera_spots, j->takedowns, j->alarms, j->locks_picked);
-    centered(440, 2, FG, "A  next job      B  retry this one");
+    text_printf(60, y, 2, DIM, "Time %d:%02d  spotted %d  takedowns %d  alarms %d", (int)j->time / 60,
+                (int)j->time % 60, j->spotted + j->camera_spots, j->takedowns, j->alarms);
+    centered(440, 2, FG, h->campaign ? "A  back to the safehouse" : "A  next job      B  retry this one");
 }
 
 void hud_draw_debug(const Heist *h, float fps)

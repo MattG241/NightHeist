@@ -8,7 +8,9 @@
 
 #include "core/nh_arena.h"
 #include "core/nh_fixedstep.h"
+#include "core/nh_save.h"
 #include "heist.h"
+#include "hideout.h"
 #include "platform/gfx.h"
 #include "res.h"
 #include "text.h"
@@ -30,6 +32,89 @@ void app_arena_stats(size_t out[6])
 }
 static Heist s_heist;
 static GameSettings s_settings;
+static NhCampaign s_camp;
+static NhSaveSettings s_save_settings;
+static Hideout s_hideout;
+static NhJobOffer s_offer;
+static enum { MODE_HIDEOUT, MODE_HEIST } s_mode;
+
+static void path_of(char *out, size_t n, const char *file)
+{
+    snprintf(out, n, "%s/%s", plat_data_dir(), file);
+}
+
+/* Main slot, falling back to the backup of the last good save. */
+static void load_game(void)
+{
+    static uint8_t buf[SAVE_MAX_BYTES];
+    const char *slots[2] = { "save.dat", "save.bak" };
+    for (int k = 0; k < 2; k++) {
+        char path[192], why[64];
+        path_of(path, sizeof(path), slots[k]);
+        long n = plat_file_read(path, buf, sizeof(buf));
+        if (n > 0 && save_decode(buf, (size_t)n, &s_camp, &s_save_settings, why, sizeof(why))) {
+            printf("loaded %s\n", slots[k]);
+            hideout_init(&s_hideout);
+            return;
+        }
+        if (n > 0)
+            fprintf(stderr, "%s: %s\n", slots[k], why);
+    }
+    camp_new(&s_camp, (uint32_t)(plat_time_us() & 0xFFFFFFFFu) | 1u);
+    save_default_settings(&s_save_settings);
+    hideout_init(&s_hideout);
+}
+
+/* Keep the previous good save as the backup, then write the new one. */
+static void save_game(void)
+{
+    if (!plat_storage_ready())
+        return;
+    static uint8_t buf[SAVE_MAX_BYTES], old[SAVE_MAX_BYTES];
+    char path[192], bak[192];
+    path_of(path, sizeof(path), "save.dat");
+    path_of(bak, sizeof(bak), "save.bak");
+    long n = plat_file_read(path, old, sizeof(old));
+    NhCampaign tmpc;
+    NhSaveSettings tmps;
+    if (n > 0 && save_decode(old, (size_t)n, &tmpc, &tmps, NULL, 0))
+        plat_file_write(bak, old, (size_t)n);
+    size_t len = save_encode(&s_camp, &s_save_settings, buf, sizeof(buf));
+    if (len)
+        plat_file_write(path, buf, len);
+}
+
+static void apply_settings(void)
+{
+    s_settings.controls = s_save_settings.controls;
+    s_settings.rumble = s_save_settings.rumble;
+    s_settings.subtitles = s_save_settings.subtitles;
+    s_settings.music_volume = (float)s_save_settings.music / 10.0f;
+    s_settings.sfx_volume = (float)s_save_settings.sfx / 10.0f;
+}
+
+/* Opt-in playtest log: one CSV line per job on the SD card. */
+static void playlog(const Heist *h, const NhPayday *pay)
+{
+    if (!s_save_settings.playlog)
+        return;
+    static char buf[32768];
+    char path[192];
+    path_of(path, sizeof(path), "playlog.csv");
+    long n = plat_file_read(path, buf, sizeof(buf) - 256);
+    if (n < 0)
+        n = 0;
+    if (n == 0)
+        n = snprintf(buf, sizeof(buf), "job,district,type,size,security,mods,outcome,grade,seconds,spotted,alarms,"
+                                       "takedowns,payout,net,money,reputation\n");
+    const NhJob *j = &h->state;
+    n += snprintf(buf + n, sizeof(buf) - (size_t)n, "%u,%d,%d,%d,%d,%u,%d,%c,%d,%d,%d,%d,%d,%d,%d,%d\n",
+                  (unsigned)s_camp.jobs_done + s_camp.jobs_failed, s_offer.district, s_offer.type, s_offer.size,
+                  s_offer.security, (unsigned)s_offer.mods, h->result.outcome, h->result.grade, (int)j->time,
+                  j->spotted + j->camera_spots, j->alarms, j->takedowns, h->result.payout * 10, pay->net * 10,
+                  s_camp.money * 10, s_camp.reputation);
+    plat_file_write(path, buf, (size_t)n);
+}
 
 static bool make_arena(NhArena *a, size_t size)
 {
@@ -63,32 +148,28 @@ int nh_app_run(const NhPlatformArgs *args)
         plat_shutdown();
         return 3;
     }
-    nh_controls_default(&s_settings.controls);
-    s_settings.rumble = true;
-    s_settings.subtitles = true;
-    s_settings.music_volume = s_settings.sfx_volume = 0.8f;
+    load_game();
+    apply_settings();
 
-    NhGenParams job;
-    memset(&job, 0, sizeof(job));
-    job.type = BT_OFFICE;
-    job.size = BS_MEDIUM;
-    job.security = 2;
-    job.seed = (uint32_t)(plat_time_us() & 0x7FFFFFFFu);
+    /* Debug jobs (--job / debug_start.txt) skip the safehouse. */
     int jt, js, jsec;
     unsigned jseed;
-    bool use_test = false;
     if (plat_debug_job(&jt, &js, &jseed, &jsec)) {
-        use_test = jt < 0;
+        NhGenParams job;
+        memset(&job, 0, sizeof(job));
+        bool use_test = jt < 0;
         job.type = (uint8_t)NH_CLAMP(jt, 0, BT_COUNT - 1);
         job.size = (uint8_t)NH_CLAMP(js, 0, BS_COUNT - 1);
         job.seed = jseed;
         job.security = (uint8_t)NH_CLAMP(jsec, 0, 4);
-    }
-    loading_screen(use_test ? "building the test building..." : "casing the job...");
-    if (!heist_start(&s_heist, use_test ? NULL : &job, &s_level, &s_scratch)) {
-        fprintf(stderr, "failed to build the level\n");
-        plat_shutdown();
-        return 4;
+        loading_screen(use_test ? "building the test building..." : "casing the job...");
+        if (!heist_start(&s_heist, use_test ? NULL : &job, NULL, NULL, s_save_settings.difficulty, &s_level,
+                         &s_scratch)) {
+            fprintf(stderr, "failed to build the level\n");
+            plat_shutdown();
+            return 4;
+        }
+        s_mode = MODE_HEIST;
     }
 
     NhFixedStep step;
@@ -112,12 +193,25 @@ int nh_app_run(const NhPlatformArgs *args)
         /* Edges must reach exactly one tick even on frames that run zero ticks. */
         pending_pressed |= in.pressed;
         pending_released |= in.released;
+        int start_job = -1;
         for (int i = 0; i < ticks; i++) {
             NhInput tick_in = in;
             tick_in.pressed = pending_pressed;
             tick_in.released = pending_released;
             pending_pressed = pending_released = 0;
-            heist_tick(&s_heist, &tick_in, &s_settings);
+            if (s_mode == MODE_HEIST) {
+                heist_tick(&s_heist, &tick_in, &s_settings);
+            } else {
+                s_camp.play_time += NH_TICK_DT;
+                int job = -1;
+                HideAction ha = hideout_tick(&s_hideout, &s_camp, &s_save_settings, &tick_in, &job);
+                if (ha == HA_SAVE) {
+                    apply_settings();
+                    save_game();
+                } else if (ha == HA_START_JOB) {
+                    start_job = job;
+                }
+            }
         }
 
         fps_frames++;
@@ -126,20 +220,53 @@ int nh_app_run(const NhPlatformArgs *args)
             fps_frames = 0;
             fps_start = now;
         }
-        heist_render(&s_heist, nh_fixedstep_alpha(&step), &s_settings, fps);
-        if (s_heist.want_rebuild) {
+        if (s_mode == MODE_HEIST) {
+            s_camp.play_time += 0.0f;
+            heist_render(&s_heist, nh_fixedstep_alpha(&step), &s_settings, fps);
+        } else {
+            hideout_render(&s_hideout, &s_camp, &s_save_settings);
+        }
+
+        if (start_job >= 0) {
+            /* Off to work. */
+            s_offer = s_camp.board[start_job];
+            NhGenParams gp;
+            camp_offer_params(&s_camp, &s_offer, &gp);
+            nh_arena_reset(&s_level);
+            nh_arena_reset(&s_scratch);
+            loading_screen("casing the job...");
+            if (!heist_start(&s_heist, &gp, &s_camp, &s_offer, s_save_settings.difficulty, &s_level, &s_scratch))
+                break;
+            s_mode = MODE_HEIST;
+            last = plat_time_us();
+        } else if (s_mode == MODE_HEIST && s_heist.done) {
+            /* Back home: book the job, save, show the payday. */
+            NhPayday pay;
+            camp_finish_job(&s_camp, &s_offer, &s_heist.result, &s_heist.state, &s_heist.world.L, &s_heist.plan,
+                            s_heist.plan.fingerprint, s_heist.plan.setpieces, &pay);
+            s_camp.play_time += s_heist.state.time;
+            playlog(&s_heist, &pay);
+            static const char *const k_title[] = { "", "PAYDAY", "PARTIAL TAKE", "WALKED AWAY", "BUSTED" };
+            hideout_payday(&s_hideout, &pay, k_title[s_heist.result.outcome]);
+            heist_end(&s_heist);
+            save_game();
+            s_mode = MODE_HIDEOUT;
+            plat_rumble(false);
+        } else if (s_mode == MODE_HEIST && s_heist.want_rebuild) {
             NhGenParams next = s_heist.job;
             heist_end(&s_heist);
             nh_arena_reset(&s_level);
             nh_arena_reset(&s_scratch);
             loading_screen("casing the job...");
-            if (!heist_start(&s_heist, &next, &s_level, &s_scratch))
+            if (!heist_start(&s_heist, &next, NULL, NULL, s_save_settings.difficulty, &s_level, &s_scratch))
                 break;
             last = plat_time_us();
         }
     }
 
-    heist_end(&s_heist);
+    if (s_mode == MODE_HEIST)
+        heist_end(&s_heist);
+    save_game();
     plat_rumble(false);
     plat_shutdown();
     return 0;

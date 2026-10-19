@@ -6,6 +6,7 @@
  * it, so every building can be solved by construction. nh_gen_validate then
  * checks the result independently. */
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "nh_gen_internal.h"
@@ -239,9 +240,10 @@ void gen_security(GenCtx *c)
         if (!(d->flags & LV_DOOR_F_EXTERIOR))
             continue;
         d->lock = LV_LOCK_PICK;
-        d->lock_level = (uint8_t)NH_CLAMP(d->lock_level + (sec >= 3) + (c->type == BT_BANK), 1, 3);
+        bool lockdown = (c->gp->mods & (1u << MOD_LOCKDOWN)) != 0;
+        d->lock_level = (uint8_t)NH_CLAMP(d->lock_level + (sec >= 3) + (c->type == BT_BANK) + lockdown, 1, 3);
         d->locked = 1;
-        if (sec >= 2)
+        if (sec >= 2 || lockdown)
             d->flags |= LV_DOOR_F_ALARMED;
     }
     /* Interior locks by room security. */
@@ -294,10 +296,13 @@ void gen_security(GenCtx *c)
         int ds[16];
         int nd = room_doors(L, j->room, ds, 16);
         uint8_t key_id = 0;
-        if (j->lock == LV_LOCK_KEYCARD || j->lock == LV_LOCK_VAULT)
-            key_id = (uint8_t)NH_MIN(next_card++, 30);
+        if (j->lock == LV_LOCK_KEYCARD || j->lock == LV_LOCK_VAULT) {
+            key_id = (uint8_t)NH_MIN(next_card, 30);
+            next_card++;
+        }
         if (j->lock == LV_LOCK_CODE) {
-            key_id = (uint8_t)NH_MIN(next_code++, GEN_CODES - 1);
+            key_id = (uint8_t)NH_MIN(next_code, GEN_CODES - 1);
+            next_code++;
         }
         if (j->lock == LV_LOCK_VAULT) {
             /* Card and code share the vault's id. */
@@ -664,15 +669,27 @@ void gen_guards(GenCtx *c)
     Level *L = c->L;
     static const int base[BS_COUNT] = { 3, 5, 7 };
     int count = base[c->size] + c->security / 2 + c->gp->extra_guards;
+    uint16_t mods = c->gp->mods;
+    if (mods & (1u << MOD_NIGHT_SHIFT))
+        count += 2;
+    if (mods & (1u << MOD_SKELETON))
+        count = NH_MAX(2, count - 2);
     count = NH_MIN(count, GEN_GUARD_MAX);
     const char *roster = k_roster[c->type];
+    /* Modifiers rewrite the head of the roster. */
+    static char mod_roster[40];
+    if (mods & ((1u << MOD_DOGS) | (1u << MOD_THERMAL))) {
+        snprintf(mod_roster, sizeof(mod_roster), "%s%s%s", (mods & (1u << MOD_DOGS)) && !strchr(roster, 'H') ? "HD" : "",
+                 (mods & (1u << MOD_THERMAL)) ? "EE" : "", roster);
+        roster = mod_roster;
+    }
     int rl = (int)strlen(roster);
     int floor_rr = 0;
     P->nguards = 0;
     for (int i = 0; P->nguards < count && i < 32; i++) {
         char ch = i < rl ? roster[i] : (gen_chance(c, 60) ? 'g' : 'r');
         int arch = arch_of(ch);
-        if (arch == ARCH_ELITE && c->security < 3 && c->size < BS_LARGE)
+        if (arch == ARCH_ELITE && c->security < 3 && c->size < BS_LARGE && !(mods & (1u << MOD_THERMAL)))
             arch = ARCH_VETERAN;
         if (arch == ARCH_DOG)
             continue; /* added with its handler */

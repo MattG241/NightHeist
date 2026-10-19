@@ -5,6 +5,7 @@
 #define NH_HEIST_H
 
 #include "core/nh_ai.h"
+#include "core/nh_campaign.h"
 #include "core/nh_gen.h"
 #include "core/nh_job.h"
 #include "core/nh_minigame.h"
@@ -49,6 +50,13 @@ typedef struct Projectile {
     float t;          /* age; for landed effects, time left */
     bool landed;
 } Projectile;
+
+/* What the crew, upgrades and modifiers change on a job. */
+typedef struct HeistPerks {
+    int pick_bonus, hack_bonus;   /* fewer pins / signal layers */
+    bool silent_takedowns, map_guards, map_objectives, noisy_slips;
+    float carry_speed, torch_life, torch_fov, thermal_life, dart_time, noise_scale;
+} HeistPerks;
 
 typedef struct Heist {
     World world;
@@ -107,10 +115,17 @@ typedef struct Heist {
     uint8_t rebake[LV_ROOMS_MAX];
     float fuse_restore_t[16];
     bool police_spawned;
+    /* Campaign */
+    bool campaign;          /* started from the job board */
+    bool done;              /* summary confirmed: back to the safehouse */
+    NhJobOffer offer;
+    HeistPerks perks;
 } Heist;
 
 /* Start a job: a generated building, or the hand-built test level if job is NULL. */
-bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena *scratch);
+/* camp/offer may be NULL (debug jobs). difficulty: 0 easy, 1 normal, 2 hard. */
+bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const NhJobOffer *offer, int difficulty,
+                 NhArena *level_arena, NhArena *scratch);
 void heist_end(Heist *h);
 void heist_tick(Heist *h, const NhInput *in, GameSettings *gs);
 void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps);

@@ -171,7 +171,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
     if ((in->pressed & NH_BTN_UP) && h->thermal_battery > 0.0f)
         h->thermal = !h->thermal;
     if (h->thermal) {
-        h->thermal_battery -= dt / 90.0f;
+        h->thermal_battery -= dt / (90.0f * h->perks.thermal_life);
         if (h->thermal_battery <= 0.0f) {
             h->thermal_battery = 0.0f;
             h->thermal = false;
@@ -249,7 +249,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
     case GD_DART: {
         int t = aimed_guard(h, nh_gadgets[g].range, 0.985f, false);
         if (t >= 0) {
-            ai_tranquilise(&h->ai, t, 3.5f);
+            ai_tranquilise(&h->ai, t, h->perks.dart_time);
             used = true;
         }
         break;

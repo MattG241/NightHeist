@@ -517,3 +517,130 @@ objectives drawn from what the building holds, and one conduct objective:
 - − opens the objectives, bag, stats and gadgets.
 - The summary shows the outcome, objectives, loot, bonuses, payout, grade,
   stealth and heat. A takes the next job; B retries.
+
+## 12. Campaign and safehouse (Phases 7–8)
+
+The pure logic lives in core and is unit-tested:
+- `nh_campaign.c`: districts, the job board, crew, upgrades, the fence,
+  heat, payday and the unlock schedule.
+- `nh_save.c`: save files.
+
+The safehouse UI is `src/game/hideout.c`. `app.c` switches between the
+safehouse and a heist.
+
+**Money.** Amounts are stored in units of $10 so they fit comfortably in
+32 bits. A new career starts with $20,000, the Driver and the Hacker.
+
+**Districts.**
+
+| District | Opens at | Buildings | Base security | Pay |
+|---|---|---|---|---|
+| The Docklands | start | warehouse, office | 0 | ×1.00 |
+| Midtown | 70 rep + Docklands finale | office, bank | 1 | ×1.35 |
+| The Old Quarter | 190 rep + Midtown finale | museum, mansion | 2 | ×1.70 |
+| The Heights | 340 rep + Old Quarter finale | bank, mansion, museum | 3 | ×2.20 |
+
+**Job board.**
+- Four offers, mostly from the newest open district. About 35% come from
+  older districts once more than one is open.
+- An offer has a seed, building type, size and security, with security
+  raised by 1 for every 34 heat.
+- It has 0–3 modifiers from those unlocked so far; contradictory pairs are
+  skipped.
+- It has an estimated payout, from typical generator loot totals × the
+  district multiplier × (1 + 15% per security level).
+- Size grows with the jobs done in that district: mostly small at first,
+  then medium and large.
+- After 5 jobs in the newest district a **finale** is offered. It is large,
+  +1 security, carries the *bonus target* modifier and pays double.
+  Finishing it completes the district.
+- A **loyalty job** is offered for a hired crew member with loyalty ≥ 60.
+  It is a medium building of their story type, and finishing it unlocks
+  their second perk.
+- The **plan screen** shows the modifiers with their descriptions. The
+  player picks up to two hired crew to bring.
+
+**Crew.**
+
+| Member | Role | Perk | Flaw | Cut | Hire |
+|---|---|---|---|---|---|
+| Nadia Volkova | Hacker | Hacks one layer shorter; one keypad code known | — | 18% | start |
+| Eddie Price | Locksmith | One pin fewer | Noisier slips | 14% | 40 rep |
+| Rosa Delgado | Driver | Police +30 s | +5 heat per job | 12% | start |
+| Big Tam | Muscle | Silent takedowns; faster carrying | Bodies found sooner | 12% | 90 rep |
+| Kit Mercer | Lookout | Guards and cameras on the map | One fewer bag slot | 10% | 130 rep |
+| Oscar Bell | Face | Fence pays 15% more | — | 20% | 220 rep |
+
+Second perks:
+- Hacker: every code known.
+- Locksmith: +1 drill charge.
+- Driver: police +60 s.
+- Muscle: +2 taser charges.
+- Lookout and Face keep their perks.
+
+Hiring costs `$30,000 + rep × $600`. Each job a member comes on adds 12
+loyalty, or 20 on an A or S grade.
+
+**Upgrades.** Eight lines with 16 levels in total, from $25k to $320k:
+torch, bag, soft soles, picks, gadget kit, thermal cells, fast darts and the
+scanner. Thermal cells and fast darts are offered only once their gadget is
+in the kit.
+
+**Payday.**
+- The take is the loot banked plus bonuses, scaled by grade.
+- Net pay is the take minus the crew's cut, plus any **loot set** bonus.
+  The fence pays for five collections: old masters, crown jewels, watches,
+  data and bullion, with 3–4 pieces each and bonuses of $100k–$200k.
+- Reputation by grade: S +25, A +18, B +12, C +8, D +4. A bust costs 10.
+  A ghost adds 5, a finale adds 30, and a partial take with loot earns 3.
+- Heat rises by 5 × the job's heat in that district and falls by 6
+  everywhere else. Lying low costs `$25,000 + rep × $100` and cools every
+  district by 35.
+
+**Unlock schedule.**
+- A new career has lockpicks, coins and the taser.
+- Every other gadget and modifier arrives at a fixed career step (jobs
+  finished or failed): `k_gadget_at` and `k_mod_at`.
+- Payday announces each arrival.
+- Over steps 1–30 no two consecutive steps go without one. `PACING.md`
+  lays this out against play time.
+
+**Post-game.**
+- Finishing the Heights finale unlocks the post-game.
+- Every gadget and modifier is available.
+- Every contract gets +1 security and +1 modifier, and the board keeps
+  coming.
+
+**Anti-staleness.**
+- The last 24 layout fingerprints are passed to the generator, which
+  rerolls any repeat.
+- Set pieces used in the last 3 jobs are avoided.
+
+**Saves.**
+- `save.dat` in the app folder, holding settings and the campaign.
+- Header: `'NHSV'`, u16 version, u16 reserved (must be 0), u32 payload
+  length, CRC-32 of the payload.
+- The payload is big-endian and written field by field, so the same bytes
+  load on Wii and desktop.
+- Decoding range-checks every field and rejects:
+  - a newer version;
+  - a bad magic or a non-zero reserved field;
+  - truncation;
+  - a checksum mismatch.
+- Before writing, a valid previous save is copied to `save.bak`. Loading
+  falls back to the backup if the main file fails.
+- The game saves after every payday, purchase, hire or settings change.
+
+**Playtest log.** An opt-in setting appends one CSV row per job to
+`playlog.csv`: career step, district, type, size, security, modifiers,
+outcome, grade, seconds, sightings, alarms, takedowns, payout, net, money and
+reputation. It is how `PACING.md`'s
+measured column gets filled.
+
+**Safehouse UI.**
+- Tabs: JOBS, CREW, GEAR, FENCE and SETTINGS.
+- Driven by the IR pointer (A to click) or the D-pad (with A). B backs out
+  of the plan screen.
+- Settings cover pointer smoothing, the turn box, turn speed, crouch
+  toggle, invert, rumble, subtitles, music and SFX volume, difficulty and
+  the playtest log.

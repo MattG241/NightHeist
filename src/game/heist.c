@@ -71,9 +71,43 @@ static NhVec3 start_pos(const Heist *h, float *yaw)
     return h->plan.entry[0];
 }
 
-bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena *scratch)
+static void set_perks(Heist *h, const NhCampaign *c, const NhJobOffer *o)
+{
+    HeistPerks *k = &h->perks;
+    memset(k, 0, sizeof(*k));
+    k->carry_speed = 0.6f;
+    k->torch_life = 1.0f;
+    k->torch_fov = 48.0f;
+    k->thermal_life = 1.0f;
+    k->dart_time = 3.5f;
+    k->noise_scale = 1.0f;
+    if (!c || !o)
+        return;
+    k->pick_bonus = c->upgrade[UP_PICKS] + (camp_crew_on(c, CR_LOCKSMITH) ? 1 : 0);
+    k->hack_bonus = camp_crew_on(c, CR_HACKER) ? 1 : 0;
+    k->silent_takedowns = camp_crew_on(c, CR_MUSCLE);
+    k->carry_speed = camp_crew_on(c, CR_MUSCLE) ? 0.85f : 0.6f;
+    k->map_guards = camp_crew_on(c, CR_LOOKOUT);
+    k->map_objectives = c->upgrade[UP_SCANNER] > 0;
+    k->noisy_slips = camp_crew_on(c, CR_LOCKSMITH) && !camp_crew_perk2(c, CR_LOCKSMITH);
+    k->torch_life = 1.0f + 0.5f * (float)c->upgrade[UP_TORCH];
+    k->torch_fov = 48.0f + 5.0f * (float)c->upgrade[UP_TORCH];
+    k->thermal_life = c->upgrade[UP_THERMAL] ? 2.0f : 1.0f;
+    k->dart_time = c->upgrade[UP_DARTS] ? 1.5f : 3.5f;
+    k->noise_scale = 1.0f - 0.2f * (float)c->upgrade[UP_SHOES];
+    if (o->mods & (1u << MOD_STORM))
+        k->noise_scale *= 0.6f;
+}
+
+bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const NhJobOffer *offer, int difficulty,
+                 NhArena *level_arena, NhArena *scratch)
 {
     memset(h, 0, sizeof(*h));
+    set_perks(h, camp, offer);
+    if (offer) {
+        h->campaign = true;
+        h->offer = *offer;
+    }
     if (job) {
         h->generated = true;
         h->job = *job;
@@ -111,9 +145,14 @@ bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena
     nh_nav_build(h->nav, &h->world.L, 0.3f);
     spawn_guards(h);
     nh_rng_seed(&h->rng, h->world.L.seed, 0x1A7u);
+    h->ai.difficulty = difficulty == 0 ? 0.75f : difficulty == 2 ? 1.3f : 1.0f;
     if (h->generated) {
         job_init(&h->state, &h->world.L, &h->plan, h->world.L.seed);
         h->state.police_delay = 100.0f - 12.0f * (float)h->job.security;
+        if (camp && offer)
+            camp_prepare_job(camp, offer, &h->state);
+        if (offer)
+            snprintf(h->job_name, sizeof(h->job_name), "%s", offer->name);
     } else {
         memset(&h->state, 0, sizeof(h->state));
         h->state.holding = h->state.carrying = -1;
@@ -122,6 +161,8 @@ bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena
         for (int g = 0; g < GD_COUNT; g++)
             h->state.charges[g] = nh_gadgets[g].charges;
     }
+    if (!h->state.charges[GD_THERMAL])
+        h->thermal_battery = 0.0f; /* goggles not in the kit yet */
     sec_init(&h->sec, &h->world.L, &h->plan);
     return true;
 }
@@ -255,7 +296,8 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         }
         if (h->takedown >= 0 && (in->pressed & NH_BTN_A)) {
             ai_knockout(ai, h->takedown);
-            heist_noise(h, ai->g[h->takedown].pos, 4.5f, NH_NOISE_TAKEDOWN);
+            if (!h->perks.silent_takedowns)
+                heist_noise(h, ai->g[h->takedown].pos, 4.5f, NH_NOISE_TAKEDOWN);
             h->rumble_ticks = 18;
             h->takedown = -1;
         }
@@ -418,7 +460,8 @@ static void update_player(Heist *h, const NhInput *in, GameSettings *gs)
     pi.ir_valid = in->ir_valid;
     pi.ir_x = in->ir_x;
     pi.ir_y = in->ir_y;
-    float slow = (h->state.carrying >= 0 || h->state.holding >= 0) ? 0.6f : 1.0f;
+    float slow = (h->state.carrying >= 0 || h->state.holding >= 0) ? h->perks.carry_speed : 1.0f;
+    h->player.noise_scale = h->perks.noise_scale;
     pi.move_x = in->stick_x * slow;
     pi.move_y = in->stick_y * slow;
     pi.lean = NH_CLAMP(in->nunchuk_roll / NH_DEG2RAD(30.0f), -1.0f, 1.0f);
@@ -441,6 +484,11 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
     /* Screens that pause the game. */
     if (h->screen == SCR_SUMMARY) {
         plat_rumble(false);
+        if (h->campaign) {
+            if (in->pressed & NH_BTN_A)
+                h->done = true;
+            return;
+        }
         if (in->pressed & (NH_BTN_A | NH_BTN_B)) {
             if (in->pressed & NH_BTN_A)
                 h->job.seed = h->job.seed * 1103515245u + 12345u; /* next job */
@@ -513,7 +561,7 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
 
     /* Torch: battery drains while on; aim follows the cursor smoothly. */
     if (h->torch_on) {
-        h->battery = fmaxf(0.0f, h->battery - NH_TICK_DT / 900.0f);
+        h->battery = fmaxf(0.0f, h->battery - NH_TICK_DT / (900.0f * h->perks.torch_life));
         if (h->battery <= 0.0f)
             h->torch_on = false;
     }
@@ -537,11 +585,11 @@ static void torch_projector(const Heist *h, NhVec3 eye, const NhMat34 *view, Gfx
     pr->enabled = true;
     pr->pos = hand;
     pr->dir = h->torch_dir;
-    pr->fov_deg = 48.0f;
+    pr->fov_deg = h->perks.torch_fov;
     pr->cookie = s_cookie;
     float b = h->battery < 0.15f ? 0.5f + h->battery * 3.3f : 1.0f;
     nh_light_init(&pr->light, hand, nh_rgba((uint8_t)(255 * b), (uint8_t)(244 * b), (uint8_t)(222 * b), 255));
-    nh_light_set_spot(&pr->light, h->torch_dir, 28.0f, NH_SPOT_COS);
+    nh_light_set_spot(&pr->light, h->torch_dir, h->perks.torch_fov * 0.58f, NH_SPOT_COS);
     nh_light_set_dist(&pr->light, 11.0f, 0.5f, NH_DIST_MEDIUM);
 }
 

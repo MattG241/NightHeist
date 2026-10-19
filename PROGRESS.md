@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: 5–6, Heist systems (complete); next is 7–8, meta-progression and content
+## Current phase: 7–8, Campaign (complete); next is 9–10, presentation and release
 
 | Phase | Status |
 |---|---|
@@ -10,8 +10,8 @@
 | 3. Guards: nav, AI, skinned characters, guard torches, detection HUD | Done |
 | 4. Procedural generator (5 types × 3 sizes, 44 set pieces, 10k-seed test) | Done |
 | 5–6. Interactables, 14 gadgets, 3 minigames, objectives, security, alarm/police, extraction, rating | Done |
-| 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Next |
-| 9–10. Audio and music, UI and title, settings, performance audit, release | Pending |
+| 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Done |
+| 9–10. Audio and music, UI and title, settings, performance audit, release | Next |
 
 ## What exists
 
@@ -143,13 +143,41 @@ open offices and 45% of archives need a second try at their furniture.
   - objectives screen and summary screen.
 - Wii (Dolphin): the same prompts and HUD at 59.9 fps.
 
-## Next: Phase 7–8, meta and content
+## Phase 7–8 results
 
-- **Hideout:** the job board (district, building type and size, security,
-  modifiers), crew (6 members with role, perk, flaw and a loyalty job),
-  loadout and upgrades (gadget charges, torch, bag), the fence with loot
-  sets, reputation and heat.
-- **Saves:** on SD, versioned and checksummed, with a backup slot.
-- **Campaign:** 4 districts, about 6 hours with the pacing curve in
-  `PACING.md`, then a post-game.
-- **Balance:** an economy test and opt-in playtest logging.
+- **Campaign.** 4 districts, a job board with finales and loyalty jobs,
+  and 6 crew with perks, flaws, cuts and loyalty.
+- **Meta-progression.** 8 upgrade lines (16 levels), the fence with 5
+  loot sets, heat and lying low, a schedule that unlocks gadgets and
+  modifiers, and a post-game.
+  Design is in `DESIGN.md` §12.
+- **Safehouse UI.** JOBS, CREW, GEAR, FENCE and SETTINGS tabs, a plan
+  screen and a payday screen. Works with the pointer or the D-pad.
+- **Saves.** Versioned, big-endian and CRC-checked, with a backup slot and
+  saving after every change. There is an opt-in CSV playtest log.
+- **Tests:** save, board, economy (31.9k checks, 0 failures).
+  - Save round trip:
+    - byte-exact re-encode;
+    - every single-byte corruption caught;
+    - truncated and newer-version saves rejected.
+  - Board rules, hiring and upgrade gates, modifiers reaching the
+    generator, crew perks reaching the job, and the unlock schedule.
+  - The economy simulation plays a full campaign on real generated
+    buildings:
+    - post-game after 33 jobs and about 8.6 hours;
+    - districts open at jobs 7, 18 and 24;
+    - never broke;
+    - all 16 upgrade levels bought;
+    - never more than 38 minutes without something new.
+  - The timeline is in `PACING.md`.
+- **Scripted desktop playtest:** board, plan, heist, summary, payday, then
+  every tab, with `save.dat` and `save.bak` written.
+- **Wii (Dolphin):** the safehouse renders and runs.
+
+## Next: Phase 9–10, presentation and release
+
+- Audio: sound effects for every system, and layered music driven by the
+  alert level.
+- A title screen, a pause menu, and UI polish.
+- A performance and memory audit on Wii.
+- Release packaging for the Homebrew Channel, and the README.

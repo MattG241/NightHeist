@@ -2,7 +2,7 @@
  * the same values must come out on the Wii (shown in the debug overlay). */
 { 42u, 0, 0, 0xE7B39176u },
 { 43u, 0, 1, 0xF1773EC4u },
-{ 44u, 0, 2, 0x572FD78Cu },
+{ 44u, 0, 2, 0xC187DA40u },
 { 142u, 1, 0, 0x65A6EDB8u },
 { 143u, 1, 1, 0x1978063Eu },
 { 144u, 1, 2, 0x04BF0F1Du },

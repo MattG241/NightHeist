@@ -27,11 +27,28 @@ typedef enum NhBuildingSize { BS_SMALL, BS_MEDIUM, BS_LARGE, BS_COUNT } NhBuildi
 extern const char *const nh_building_names[BT_COUNT];
 extern const char *const nh_size_names[BS_COUNT];
 
+typedef enum NhModifier {
+    MOD_NIGHT_SHIFT,   /* more guards */
+    MOD_SKELETON,      /* fewer guards */
+    MOD_BLACKOUT,      /* half the building starts dark */
+    MOD_LIGHTS_ON,     /* everything lit (cleaners in) */
+    MOD_DOGS,          /* an extra dog team */
+    MOD_THERMAL,       /* elites with thermal goggles */
+    MOD_LOCKDOWN,      /* alarmed doors everywhere, harder locks */
+    MOD_INSIDE_MAN,    /* all keypad codes known */
+    MOD_FAST_POLICE,   /* police arrive in half the time */
+    MOD_STORM,         /* rain covers footsteps (quieter) */
+    MOD_BONUS_TARGET,  /* client pays double for the main target */
+    MOD_NO_KILLS,      /* client insists: no takedowns */
+    MOD_COUNT
+} NhModifier;
+
 typedef struct NhGenParams {
     uint32_t seed;
     uint8_t type, size;
     uint8_t security;          /* 0..4: lock strength, cameras, guard count */
     uint8_t extra_guards;
+    uint16_t mods;             /* bit per NhModifier (night shift, blackout, dogs...) */
     uint64_t avoid_setpieces;  /* set pieces used recently: avoided when there's a choice */
     const uint32_t *avoid_layouts; /* fingerprints of recent buildings: never repeated */
     int navoid;

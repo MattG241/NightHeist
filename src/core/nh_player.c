@@ -58,7 +58,7 @@ static void emit_noise(NhPlayer *p, NhVec3 pos, float radius, int kind, int surf
         return;
     NhNoise *n = &p->noises[p->nnoise++];
     n->pos = pos;
-    n->radius = radius;
+    n->radius = radius * (p->noise_scale > 0.0f ? p->noise_scale : 1.0f);
     n->kind = (uint8_t)kind;
     n->surface = (uint8_t)surface;
     n->from_player = 1;

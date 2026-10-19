@@ -432,7 +432,9 @@ static void layout_warehouse(GenCtx *c)
         int back = hall2 ? hall2 : hall;
         /* Loading bays: one long bay or several, divided by partitions. */
         int bstarts[4];
-        int nb = split_span(c, hx0, hx1, NH_MAX(6, (hx1 - hx0 + 1) / gen_ri(c, 1, 3)), hx1 - hx0 + 1, bstarts, 4);
+        int parts = gen_ri(c, 1, 3);
+        int bay_w = NH_MAX(6, (hx1 - hx0 + 1) / parts);
+        int nb = split_span(c, hx0, hx1, bay_w, hx1 - hx0 + 1, bstarts, 4);
         int prev_bay = 0;
         for (int k = 0; k < nb; k++) {
             int x0 = bstarts[k], x1 = k + 1 < nb ? bstarts[k + 1] - 1 : hx1;
@@ -1095,6 +1097,10 @@ static void add_lights(GenCtx *c)
         if (c->security >= 3)
             lit_pct = lit_pct * 3 / 4;
         bool on = gen_chance(c, lit_pct);
+        if (c->gp->mods & (1u << MOD_LIGHTS_ON))
+            on = true;
+        if ((c->gp->mods & (1u << MOD_BLACKOUT)) && rr->func != RF_STAIRWELL && rr->func != RF_SECURITY)
+            on = false;
         if (on)
             rr->flags |= LV_R_LIT;
         c->gr[r].lit = on;
