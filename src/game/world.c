@@ -184,6 +184,20 @@ void world_rebake(World *w)
     }
 }
 
+void world_rebake_room(World *w, int room)
+{
+    for (int i = w->room_first[room]; i < w->room_first[room] + w->room_count[room]; i++) {
+        WorldBatch *wb = &w->batches[i];
+        nh_bake_mesh(&w->L, wb->room, &wb->cpu, wb->albedo, &w->bake);
+        gfx_mesh_set_colors(wb->gm, wb->cpu.colors);
+    }
+    for (int i = 0; i < w->L.nprops; i++) {
+        const LvProp *p = &w->L.props[i];
+        if (p->room == room)
+            w->prop_ambient[i] = world_ambient_at(w, nh_v3(p->x, p->y + 0.5f, p->z));
+    }
+}
+
 void world_update(World *w, float dt)
 {
     for (int i = 0; i < w->L.ndoors; i++) {

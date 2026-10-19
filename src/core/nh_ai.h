@@ -124,6 +124,7 @@ typedef struct AiGuard {
     float seen_t;              /* seconds since the player was last visible */
     int8_t reported_by;        /* janitor fleeing to this guard */
     int16_t anomaly;           /* anomaly being investigated + 1 */
+    float ko_timer;            /* > 0: tranquilised, knocked out when it runs out */
     uint8_t ret_state;         /* state to resume after SUSPICIOUS */
 } AiGuard;
 
@@ -186,6 +187,10 @@ typedef struct AiWorld {
     int npending;
     int caught;          /* guard index + 1 that caught the player this heist */
     float player_light;  /* light on the player last tick, including guard torches */
+    struct {
+        NhVec3 pos;
+        float radius, t;  /* t: seconds left */
+    } smoke[6];          /* smoke clouds block sight */
 } AiWorld;
 
 void ai_init(AiWorld *w, Level *L, NhNav *nav, uint32_t seed);
@@ -204,6 +209,22 @@ void ai_distraction(AiWorld *w, NhVec3 pos, float radius, int kind);
 void ai_send_guard(AiWorld *w, int g, NhVec3 pos, float seconds);
 /* Building alarm raised by something else (camera operator, panel, laser). */
 void ai_raise_alarm(AiWorld *w, NhVec3 where);
+
+/* Sight from an arbitrary eye (security cameras): 0..1 visibility using the
+ * same light, cone and occlusion rules as guards (smoke included). */
+float ai_point_visibility(const AiWorld *w, NhVec3 eye, NhVec3 fwd, float fov_deg, float range, const AiPlayerView *pv,
+                          float *dist);
+/* Smoke cloud for `seconds`. */
+void ai_add_smoke(AiWorld *w, NhVec3 pos, float radius, float seconds);
+bool ai_smoke_blocks(const AiWorld *w, NhVec3 a, NhVec3 b);
+/* The camera operator saw something: guards converge on `where` (counts as an alert). */
+void ai_report(AiWorld *w, NhVec3 where);
+/* Police arriving at `at` sweep towards `lkp`. Returns the guard index. */
+int ai_spawn_police(AiWorld *w, NhVec3 at, NhVec3 lkp);
+/* Tranquiliser: knocked out after `seconds` (they stagger meanwhile). */
+void ai_tranquilise(AiWorld *w, int g, float seconds);
+/* Bodies picked up / put down by the player. */
+void ai_carry(AiWorld *w, int g, bool carried);
 
 /* World-space eye and view direction of a guard (for rendering cones and torches). */
 NhVec3 ai_guard_eye(const AiGuard *g);

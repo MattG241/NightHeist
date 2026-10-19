@@ -211,10 +211,11 @@ int guards_lights(const GuardsVis *gv, const AiWorld *ai, const World *w, NhVec3
     return nl;
 }
 
-void guards_draw(const GuardsVis *gv, const AiWorld *ai, const World *w, float alpha)
+void guards_draw(const GuardsVis *gv, const AiWorld *ai, const World *w, float alpha, bool xray, NhVec3 eye)
 {
     for (int i = 0; i < ai->n; i++) {
-        if (!guard_visible(ai, w, i))
+        bool through = xray && ai->g[i].active && nh_v3_dist(ai->g[i].pos, eye) < 30.0f;
+        if (!through && !guard_visible(ai, w, i))
             continue;
         const AiGuard *g = &ai->g[i];
         const ResModel *rm = model_for(g);
@@ -241,6 +242,8 @@ void guards_draw(const GuardsVis *gv, const AiWorld *ai, const World *w, float a
                 mat.ambient = amb;
             }
             mat.flags |= GFX_MAT_WARM | GFX_MAT_VCOLOR;
+            if (through)
+                mat.flags |= GFX_MAT_XRAY;
             gfx_draw_skinned(rm->parts[k], &mat, slots, part->nslots);
         }
     }

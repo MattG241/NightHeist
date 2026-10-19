@@ -409,3 +409,111 @@ next attempt. `avoid_layouts` (recent fingerprints) are never returned.
   − cycles the building type.
 - Desktop `--job TYPE,SIZE,SEED[,SEC]` or `--test-level` picks the job; on
   Wii, a `job ...` line in `debug_start.txt` does the same.
+
+## 11. Heist systems (Phases 5–6)
+
+The pure logic lives in core and is unit-tested:
+- `nh_job.c`: objectives, inventory, gadgets, stats, the alarm and police
+  clock, and the rating.
+- `nh_minigame.c`: lockpick, safecrack and hack.
+- `nh_security.c`: cameras, lasers, alarmed doors, power and EMP.
+
+The game layer is `interact.c`, `gadgets.c`, `heist.c` and `hud.c`.
+
+**Interaction (C).**
+- *Targeting.* Everything within 2.3 m along the aim (the torch direction)
+  is scored and the best target wins. Line of sight is required. Small
+  items win ties.
+- *Timed actions.* Some actions need C held: swipe 0.5 s, keypad 1 s,
+  carry heavy loot 1.2 s, cut the power 2 s, disarm the alarm 3 s, vault
+  4 s. C must be released before the next action can start.
+
+| Target | Action |
+|---|---|
+| Doors | Open/close. Pick (lockpick minigame); swipe a keycard; enter a known code; maglocks open when the security circuit is cut; the vault needs card + code. Opening an alarmed exterior door starts a 15 s entry delay: disarm at the panel inside or the alarm sounds. |
+| Loot | Small items go in the bag (12 slots). Heavy items (gold, paintings, statues, the crate) are carried in your hands at 60% speed and only count at the van. Items in display cases trip the alarm unless the security power is off. Taking loot leaves a "missing" anomaly for guards. |
+| Keycards, code notes | Picked up into the inventory. |
+| Safes | Safecrack minigame, or the drill gadget: 18 s, loud. Contents become takeable. |
+| Terminals | Hack minigame. Success completes hack/wipe objectives and downloads every keypad code; running out of time traces you and guards converge. |
+| Security console | Loop the camera feeds for 2 minutes. |
+| Fuse boxes | Cut or restore a lighting circuit or the security circuit. Rooms re-light one per tick. A guard who reaches a cut box restores it after 2.5 s. |
+| Alarm panel | Disarm the door alarms. |
+| Phones | Plant a bug (objective). |
+| Hiding spots | Lockers, wardrobes, stalls, dumpsters, and desks when crouched. Guards can't see you, but a veteran checking that spot pulls you out. |
+| Bodies | Pick up (carried behind you, slow), put down, or hide in a locker, wardrobe or dumpster, which removes the body anomaly. |
+| Vents, ladder, roof hatch | Climb through the building's alternative routes. |
+| The van | Leave: success with the target, otherwise a partial/abort. |
+
+**Gadgets (D-pad to choose, A to use).** There are 14:
+
+| Gadget | Effect |
+|---|---|
+| Lockpicks | Always carried. |
+| Coins | Thrown: a small distraction. |
+| Noisemaker | Thrown: beeps for 9 s, drawing guards from 16 m. |
+| Smoke | Thrown: a cloud that blocks guard and camera sight for 16 s. |
+| EMP | Thrown: cameras and lasers within 7 m dead for 15 s. |
+| Taser | Knocks out up close, noisily. |
+| Dart gun | Silent; the guard drops after 3.5 s and may bark first. |
+| Jammer | Blinds a camera for 20 s. |
+| Glass cutter | Cuts a window open quietly. Guards notice the cut glass. |
+| Card cloner | Copies keycards from an unaware guard: level 1–3 by rank. |
+| Thermal goggles | D-pad up toggles them; 90 s battery. Warm guards drawn through walls with `GFX_MAT_XRAY`. |
+| Laser mirror | Bends one laser beam out of the way. |
+| Safe drill | Drills a safe open: 18 s, loud. |
+| Phone dialer | Rings a desk phone to pull a guard over. |
+
+**Minigames.**
+- *Lockpick:* twist the Wii Remote to each pin's sweet spot. The feel meter
+  and rumble ticks show how close you are; A sets the pin. A slip makes
+  noise and costs 0.6 s.
+- *Safecrack:* the twist angle sets the dial speed, alternating direction
+  for each number. Stop on the clunk and press A.
+- *Hack:* the pointer matches a signal's frequency (x) and amplitude (y);
+  hold the match to fill each layer before the trace timer runs out.
+
+**Security.**
+- *Cameras* sweep ±40° over 12 s. Their detection fills faster with light,
+  closeness and movement.
+- When a camera fills, what happens depends on the operator:
+  - with an operator at the console, the two nearest guards converge on you
+    and it counts as an alert;
+  - with no operator, the camera only records, except at security 3+, where
+    it raises the alarm.
+- *Lasers* trip the alarm if the beam passes within 0.28 m of the player's
+  capsule (crouching changes its height).
+
+**Alarm and police.**
+- The alarm starts a police clock of 100 − 12×security seconds.
+- Three police officers then arrive at the street entry and sweep from your
+  last known position; two more come every 45 s.
+- Being caught is a bust.
+
+**Objectives and rating.** Each job has the main target plus 1–2 optional
+objectives drawn from what the building holds, and one conduct objective:
+
+| Kind | Objectives |
+|---|---|
+| Main | Steal (the target) |
+| Optional | hack, wipe, safe, photograph, bug |
+| Conduct | ghost, no alarm, no takedowns, a loot target, out within 8 minutes |
+
+- *Stealth score:* starts at 100.
+  - −12 per time spotted by a guard;
+  - −8 per camera spot;
+  - −25 per alarm;
+  - −10 per body found;
+  - −4 per takedown;
+  - +10 for a clean ghost.
+- *Grade:* S, A, B, C or D, from stealth and objectives done. It scales the
+  payout from 80% to 120%.
+- *Heat:* rises with alarms, sightings and bodies; it is 0 for a ghost.
+- *Results:* a bust pays nothing. Leaving without the target pays no
+  bonuses, so walking straight back to the van earns nothing.
+
+**Screens.**
+- \+ opens the floor map, showing only rooms you've seen: explored rooms,
+  walls, doors (red when locked), objective markers and the van.
+- − opens the objectives, bag, stats and gadgets.
+- The summary shows the outcome, objectives, loot, bonuses, payout, grade,
+  stealth and heat. A takes the next job; B retries.

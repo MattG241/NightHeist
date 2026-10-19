@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: 4, Procedural generator (complete); next is 5–6, interactables and heist flow
+## Current phase: 5–6, Heist systems (complete); next is 7–8, meta-progression and content
 
 | Phase | Status |
 |---|---|
@@ -9,8 +9,8 @@
 | 2. Lighting: bake, projected torch, portals, transparency, frame pipelining | Done |
 | 3. Guards: nav, AI, skinned characters, guard torches, detection HUD | Done |
 | 4. Procedural generator (5 types × 3 sizes, 44 set pieces, 10k-seed test) | Done |
-| 5–6. Interactables, gadgets, minigames, objectives, alarm/police, extraction | Next |
-| 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Pending |
+| 5–6. Interactables, 14 gadgets, 3 minigames, objectives, security, alarm/police, extraction, rating | Done |
+| 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Next |
 | 9–10. Audio and music, UI and title, settings, performance audit, release | Pending |
 
 ## What exists
@@ -123,13 +123,33 @@ and quantise to 8 bits like GX.
 Dressing check across 1,500 buildings: no room ends up bare. About 20% of
 open offices and 45% of archives need a second try at their furniture.
 
-## Next: Phase 5–6, interactables and heist flow
+## Phase 5–6 results
 
-- Interactions: lockpicking, keycards, keypads (codes from notes), fuse
-  boxes, safes, terminals, hiding in lockers, wardrobes and under desks, body
-  dragging, picking up loot (heavy loot slows you), windows (glass cutter),
-  vents, ladder and hatch.
-- Gadgets (at least 14), minigames (lockpick, safecrack, hack), cameras that
-  see you, lasers, alarm panels, the security room console.
-- Objectives, the alarm and police response, extraction, failure, and the
-  summary with a rating.
+- Tests: minigames, job, security (31.8k checks in all, 0 failures).
+  - An ideal player always solves every lockpick, safe and hack tier.
+  - Mistakes slip, and a hack times out into a trace.
+  - Main objective, partial and bust outcomes; conduct objectives failing;
+    no bonus for driving straight off; payout never rises with more
+    sightings.
+  - A camera spots a lit player; cutting the security power, jamming or
+    smoke stops it; a laser trips and the mirror bypasses it; the
+    door-alarm countdown and disarming work.
+- Scripted desktop playtests, with screenshots in the PR:
+  - door prompt, then the lockpick UI and a slip;
+  - keycard pickup;
+  - fuse box cut, with the room going dark;
+  - thermal goggles showing guards through walls;
+  - smoke;
+  - objectives screen and summary screen.
+- Wii (Dolphin): the same prompts and HUD at 59.9 fps.
+
+## Next: Phase 7–8, meta and content
+
+- **Hideout:** the job board (district, building type and size, security,
+  modifiers), crew (6 members with role, perk, flaw and a loyalty job),
+  loadout and upgrades (gadget charges, torch, bag), the fence with loot
+  sets, reputation and heat.
+- **Saves:** on SD, versioned and checksummed, with a backup slot.
+- **Campaign:** 4 districts, about 6 hours with the pacing curve in
+  `PACING.md`, then a post-game.
+- **Balance:** an economy test and opt-in playtest logging.

@@ -751,10 +751,13 @@ static void setup_draw(const GfxMaterial *mat, bool skinned, bool has_colors, co
     p_glActiveTexture(GL_TEXTURE0);
     p_glBindTexture(GL_TEXTURE_2D, tex_id(mat->tex));
 
-    p_glEnable(GL_DEPTH_TEST);
+    if (mat->flags & GFX_MAT_XRAY)
+        p_glDisable(GL_DEPTH_TEST);
+    else
+        p_glEnable(GL_DEPTH_TEST);
     p_glDepthFunc(GL_LEQUAL);
     bool blend = (mat->flags & (GFX_MAT_BLEND | GFX_MAT_ADD)) != 0;
-    p_glDepthMask(blend ? GL_FALSE : GL_TRUE);
+    p_glDepthMask(blend || (mat->flags & GFX_MAT_XRAY) ? GL_FALSE : GL_TRUE);
     if (blend) {
         p_glEnable(GL_BLEND);
         if (mat->flags & GFX_MAT_ADD)

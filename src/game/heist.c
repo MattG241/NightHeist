@@ -1,3 +1,5 @@
+/* Night Heist - the heist loop: player, guards, security, interactions,
+ * gadgets, the police and the getaway. */
 #include "heist.h"
 
 #include <math.h>
@@ -5,7 +7,10 @@
 #include <string.h>
 
 #include "core/nh_fixedstep.h"
+#include "core/nh_proptab.h"
+#include "gadgets.h"
 #include "hud.h"
+#include "interact.h"
 #include "res.h"
 #include "testlevel.h"
 
@@ -78,10 +83,10 @@ bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena
                  nh_building_names[job->type], (unsigned)job->seed);
     } else {
         testlevel_build(&h->world.L);
-        /* Convenience for testing: a couple of doors start open. */
         h->world.L.doors[0].open = h->world.L.doors[0].target = 1.0f;
         h->world.L.doors[0].locked = 0;
         h->world.L.doors[1].open = h->world.L.doors[1].target = 1.0f;
+        h->plan.objective = -1;
         snprintf(h->job_name, sizeof(h->job_name), "test building");
     }
     if (!world_build(&h->world, level_arena, scratch))
@@ -96,13 +101,28 @@ bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena
     }
     h->torch_on = true;
     h->battery = 1.0f;
+    h->thermal_battery = 1.0f;
     h->torch_dir = nh_dir_from_yaw_pitch(yaw, 0);
+    h->hide_prop = -1;
     s_cookie = res_texture("cookie");
     h->nav = nh_arena_alloc(level_arena, sizeof(NhNav));
     if (!h->nav)
         return false;
     nh_nav_build(h->nav, &h->world.L, 0.3f);
     spawn_guards(h);
+    nh_rng_seed(&h->rng, h->world.L.seed, 0x1A7u);
+    if (h->generated) {
+        job_init(&h->state, &h->world.L, &h->plan, h->world.L.seed);
+        h->state.police_delay = 100.0f - 12.0f * (float)h->job.security;
+    } else {
+        memset(&h->state, 0, sizeof(h->state));
+        h->state.holding = h->state.carrying = -1;
+        h->state.police_eta = -1.0f;
+        h->state.bag_cap = 12;
+        for (int g = 0; g < GD_COUNT; g++)
+            h->state.charges[g] = nh_gadgets[g].charges;
+    }
+    sec_init(&h->sec, &h->world.L, &h->plan);
     return true;
 }
 
@@ -111,10 +131,50 @@ void heist_end(Heist *h)
     world_free(&h->world);
 }
 
-static void status(Heist *h, const char *msg)
+void heist_status(Heist *h, const char *msg)
 {
     snprintf(h->status, sizeof(h->status), "%s", msg);
     h->status_ticks = 150;
+}
+
+void heist_noise(Heist *h, NhVec3 pos, float radius, int kind)
+{
+    NhPlayer *p = &h->player;
+    if (p->nnoise < (int)NH_ARRAY_LEN(p->noises))
+        p->noises[p->nnoise++] = (NhNoise){ pos, radius, (uint8_t)kind, 0, 1 };
+}
+
+void heist_alarm(Heist *h, NhVec3 where, const char *why)
+{
+    if (!h->ai.alarm)
+        ai_raise_alarm(&h->ai, where);
+    if (!h->state.alarm) {
+        job_event(&h->state, &h->plan, JE_ALARM, -1, 0);
+        heist_status(h, why);
+        h->rumble_ticks = 30;
+    }
+}
+
+void heist_set_power(Heist *h, int circuit, bool on)
+{
+    Level *L = &h->world.L;
+    circuit &= 15;
+    if ((L->power[circuit] != 0) == on)
+        return;
+    L->power[circuit] = on;
+    /* Re-light the rooms on that circuit over the next frames. */
+    for (int i = 0; i < L->nlights; i++)
+        if ((L->lights[i].circuit & 15) == circuit && L->lights[i].room)
+            h->rebake[L->lights[i].room] = 1;
+    if (circuit == h->plan.security_circuit) {
+        for (int i = 0; i < L->ndoors; i++)
+            if (L->doors[i].lock == LV_LOCK_POWERED)
+                L->doors[i].locked = on;
+        heist_status(h, on ? "Security power back on" : "Security power cut: cameras, lasers and maglocks down");
+    } else {
+        heist_status(h, on ? "Lights back on" : "Lights out");
+    }
+    h->fuse_restore_t[circuit] = 0.0f;
 }
 
 void heist_camera(const Heist *h, float alpha, NhMat34 *view, NhVec3 *eye)
@@ -131,70 +191,10 @@ void heist_camera(const Heist *h, float alpha, NhMat34 *view, NhVec3 *eye)
     nh_m34_inverse(view, &cam);
 }
 
-/* The door the player is looking at within reach, or -1. */
-static int door_in_front(const Heist *h)
-{
-    const Level *L = &h->world.L;
-    NhVec3 eye = nh_player_eye(&h->player, L, 1.0f);
-    NhVec3 dir = nh_dir_from_yaw_pitch(h->player.yaw, h->player.pitch);
-    int best = -1;
-    float best_d = 2.2f;
-    for (int i = 0; i < L->ndoors; i++) {
-        const LvDoor *d = &L->doors[i];
-        NhVec3 c = d->axis == 0 ? nh_v3((float)d->x * LV_CELL, lv_floor_y(d->floor) + 1.1f, (float)d->z * LV_CELL + 1.0f)
-                                : nh_v3((float)d->x * LV_CELL + 1.0f, lv_floor_y(d->floor) + 1.1f, (float)d->z * LV_CELL);
-        NhVec3 to = nh_v3_sub(c, eye);
-        float dist = nh_v3_len(to);
-        if (dist > best_d || dist < 0.01f)
-            continue;
-        if (nh_v3_dot(nh_v3_scale(to, 1.0f / dist), dir) < 0.6f)
-            continue;
-        best = i;
-        best_d = dist;
-    }
-    return best;
-}
-
-/* Climb into the duct above a grate, or drop out of it. */
-static bool try_vent(Heist *h)
-{
-    NhPlayer *p = &h->player;
-    const Level *L = &h->world.L;
-    int cx = lv_cell_of(p->pos.x), cz = lv_cell_of(p->pos.z);
-    const LvCell *c = lv_cell(L, p->floor, cx, cz);
-    if (!c || (c->flags & (LV_C_GRATE | LV_C_VENT)) != (LV_C_GRATE | LV_C_VENT))
-        return false;
-    NhVec3 ctr = lv_cell_center(p->floor, cx, cz);
-    if (nh_v3_dist_xz(ctr, p->pos) > 0.9f)
-        return false;
-    if (p->mode == NH_MOVE_WALK) {
-        p->mode = NH_MOVE_VENT;
-        p->pos = p->prev_pos = nh_v3(ctr.x, lv_floor_y(p->floor) + LV_CEIL + 0.05f, ctr.z);
-        status(h, "In the vents");
-    } else {
-        p->mode = NH_MOVE_WALK;
-        p->pos = p->prev_pos = nh_v3(ctr.x, lv_floor_y(p->floor) + 0.4f, ctr.z);
-        p->grounded = false;
-        p->crouch = 1.0f;
-        status(h, "Dropped down");
-    }
-    return true;
-}
-
 static void subtitle(Heist *h, const char *msg)
 {
     snprintf(h->subtitle, sizeof(h->subtitle), "%s", msg);
     h->subtitle_ticks = 150;
-}
-
-static void reset_after_caught(Heist *h)
-{
-    float yaw;
-    NhVec3 start = start_pos(h, &yaw);
-    nh_player_init(&h->player, start, yaw);
-    h->torch_dir = nh_dir_from_yaw_pitch(yaw, 0);
-    spawn_guards(h);
-    status(h, "Back to the start");
 }
 
 static void fill_player_view(Heist *h)
@@ -212,9 +212,9 @@ static void fill_player_view(Heist *h)
     pv->torch_on = h->torch_on;
     pv->in_vent = p->mode == NH_MOVE_VENT;
     pv->disguised = false;
-    pv->hiding_prop = -1;
+    pv->hiding_prop = h->hide_prop;
     pv->beam_valid = false;
-    if (h->torch_on && !pv->in_vent) {
+    if (h->torch_on && !pv->in_vent && h->hide_prop < 0) {
         NhVec3 a = pv->head, b = nh_v3_add(a, nh_v3_scale(h->torch_dir, 20.0f));
         float t;
         if (lv_raycast(L, a, b, &t)) {
@@ -226,13 +226,21 @@ static void fill_player_view(Heist *h)
     pv->nnoise = p->nnoise;
 }
 
+static void busted(Heist *h)
+{
+    job_event(&h->state, &h->plan, JE_CAUGHT, -1, 0);
+    job_result(&h->state, &h->result);
+    h->screen = SCR_SUMMARY;
+}
+
 static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
 {
     NhPlayer *p = &h->player;
     AiWorld *ai = &h->ai;
     /* Takedown: nearest eligible guard roughly in front of the player. */
     h->takedown = -1;
-    if (h->caught_t <= 0.0f && p->mode == NH_MOVE_WALK) {
+    if (h->caught_t <= 0.0f && p->mode == NH_MOVE_WALK && !interact_busy(h) && h->state.carrying < 0 &&
+        h->state.holding < 0) {
         NhVec3 fwd = nh_dir_from_yaw_pitch(p->yaw, 0);
         float best = 9.0f;
         for (int i = 0; i < ai->n; i++) {
@@ -246,16 +254,13 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
             h->takedown = i;
         }
         if (h->takedown >= 0 && (in->pressed & NH_BTN_A)) {
-            int g = h->takedown;
-            ai_knockout(ai, g);
-            ai_add_anomaly(ai, AN_BODY, nh_v3_add(ai->g[g].pos, nh_v3(0, 0.3f, 0)), g);
-            if (p->nnoise < (int)NH_ARRAY_LEN(p->noises))
-                p->noises[p->nnoise++] = (NhNoise){ ai->g[g].pos, 4.5f, NH_NOISE_TAKEDOWN, 0, 1 };
+            ai_knockout(ai, h->takedown);
+            heist_noise(h, ai->g[h->takedown].pos, 4.5f, NH_NOISE_TAKEDOWN);
             h->rumble_ticks = 18;
-            status(h, "Takedown");
             h->takedown = -1;
         }
     }
+    interact_carry_tick(h);
     fill_player_view(h);
     guards_vis_pre_tick(&h->gv, ai);
     ai_tick(ai, &h->pv);
@@ -267,17 +272,30 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         case EV_BARK:
             if (d < 16.0f && e->arg < BARK_COUNT && k_barks[e->arg])
                 subtitle(h, k_barks[e->arg]);
+            if (e->arg == BARK_MAN_DOWN)
+                job_event(&h->state, &h->plan, JE_BODY_FOUND, -1, 0);
             break;
         case EV_RADIO:
-            subtitle(h, k_barks[BARK_RADIO_SPOTTED]);
+            subtitle(h, e->arg == BARK_CAMERA ? "Control: camera has someone. Moving in." : k_barks[BARK_RADIO_SPOTTED]);
             break;
         case EV_SPOTTED:
-            status(h, "Spotted!");
+            heist_status(h, "Spotted!");
+            job_event(&h->state, &h->plan, JE_SPOTTED, -1, 0);
             h->rumble_ticks = 12;
             break;
         case EV_ALARM:
-            status(h, "ALARM RAISED");
-            h->rumble_ticks = 30;
+            heist_alarm(h, e->pos, "ALARM RAISED");
+            break;
+        case EV_TAKEDOWN: {
+            const AiGuard *g = &ai->g[e->guard];
+            ai_add_anomaly(ai, AN_BODY, nh_v3_add(g->pos, nh_v3(0, 0.3f, 0)), e->guard);
+            job_event(&h->state, &h->plan, JE_TAKEDOWN, -1, 0);
+            heist_status(h, "Takedown");
+            break;
+        }
+        case EV_FOUND_HIDING:
+            interact_unhide(h);
+            heist_status(h, "Found!");
             break;
         case EV_CHECKIN_MISSED:
             subtitle(h, "Control: no answer from your partner. Go and look.");
@@ -285,7 +303,7 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         case EV_CAUGHT:
             if (h->caught_t <= 0.0f) {
                 h->caught_t = 2.5f;
-                status(h, "CAUGHT");
+                heist_status(h, "CAUGHT");
                 h->rumble_ticks = 40;
             }
             break;
@@ -296,10 +314,10 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
     if (h->caught_t > 0.0f) {
         h->caught_t -= NH_TICK_DT;
         if (h->caught_t <= 0.0f)
-            reset_after_caught(h);
+            busted(h);
     }
     /* Heartbeat rumble while someone is getting suspicious. */
-    float sus = ai->max_suspicion;
+    float sus = NH_MAX(ai->max_suspicion, h->sec.max_sus);
     if (sus > 0.45f && sus < 1.0f && h->caught_t <= 0.0f) {
         h->heartbeat_t -= NH_TICK_DT;
         if (h->heartbeat_t <= 0.0f) {
@@ -316,30 +334,138 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         h->subtitle_ticks--;
 }
 
-void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
+/* Cameras, lasers, alarmed doors; guards turning the power back on; police. */
+static void update_security(Heist *h)
 {
-    h->tick++;
+    const float dt = NH_TICK_DT;
+    Level *L = &h->world.L;
+    NhVec3 where = h->player.pos;
+    if (h->cams_looped > 0.0f)
+        h->cams_looped -= dt;
+    uint32_t ev = sec_tick(&h->sec, L, &h->ai, &h->pv, dt, &where);
+    for (int i = 0; i < h->sec.ncam; i++) {
+        const SecCamera *c = &h->sec.cam[i];
+        const NhEntity *e = &h->plan.ent[c->ent];
+        if (e->prop >= 0)
+            L->props[e->prop].yaw = c->yaw;
+    }
+    if ((ev & SEC_EV_CAMERA) && h->cams_looped <= 0.0f) {
+        bool operator_on = false;
+        for (int i = 0; i < h->ai.n; i++) {
+            const AiGuard *g = &h->ai.g[i];
+            operator_on |= g->active && g->arch == ARCH_CAMOP && g->state == AS_STATION;
+        }
+        job_event(&h->state, &h->plan, JE_CAMERA_SPOTTED, -1, 0);
+        if (operator_on) {
+            ai_report(&h->ai, where);
+            heist_status(h, "Spotted on camera!");
+        } else if (h->job.security >= 3) {
+            heist_alarm(h, where, "Camera alarm!");
+        } else {
+            heist_status(h, "A camera saw you (recorded)");
+        }
+        h->rumble_ticks = NH_MAX(h->rumble_ticks, 10);
+    }
+    if (ev & SEC_EV_LASER)
+        heist_alarm(h, where, "Laser tripped!");
+    if (ev & SEC_EV_ENTRY_TIMEOUT)
+        heist_alarm(h, where, "Door alarm!");
+    /* A guard who reaches a cut fuse box puts the power back. */
+    for (int i = 0; i < h->plan.nent; i++) {
+        const NhEntity *e = &h->plan.ent[i];
+        if (e->kind != ENT_FUSE_BOX || L->power[e->key_id & 15])
+            continue;
+        bool fixer = false;
+        for (int g = 0; g < h->ai.n; g++) {
+            const AiGuard *gd = &h->ai.g[g];
+            fixer |= gd->active && gd->state != AS_KO && gd->state != AS_CARRIED && gd->arch != ARCH_DOG &&
+                     !nh_ai_arch[gd->arch].civilian && nh_v3_dist(gd->pos, e->pos) < 1.8f;
+        }
+        float *t = &h->fuse_restore_t[e->key_id & 15];
+        *t = fixer ? *t + dt : 0.0f;
+        if (*t > 2.5f) {
+            heist_set_power(h, e->key_id, true);
+            ai_clear_anomaly(&h->ai, AN_LIGHTS_OFF, e->key_id);
+        }
+    }
+    /* Police */
+    NhJob *j = &h->state;
+    if (j->police_here) {
+        h->police_wave_t -= dt;
+        if (!h->police_spawned || (h->police_wave_t <= 0.0f && h->ai.n < AI_MAX_GUARDS - 1)) {
+            int n = h->police_spawned ? 2 : 3;
+            for (int k = 0; k < n; k++) {
+                NhVec3 at = nh_v3_add(h->plan.entry[0], nh_v3((float)k * 1.2f, 0, 0));
+                int gi = ai_spawn_police(&h->ai, at, h->player.pos);
+                if (gi >= 0) {
+                    h->gv.g[gi].prev_pos = at;
+                    h->gv.g[gi].clip = h->gv.g[gi].prev_clip = h->ai.g[gi].anim;
+                    h->gv.g[gi].blend = 1.0f;
+                }
+            }
+            if (!h->police_spawned)
+                heist_status(h, "POLICE ON SITE");
+            h->police_spawned = true;
+            h->police_wave_t = 45.0f;
+        }
+    }
+}
+
+static void update_player(Heist *h, const NhInput *in, GameSettings *gs)
+{
     World *w = &h->world;
     NhPlayerInput pi = { 0 };
     pi.ir_valid = in->ir_valid;
     pi.ir_x = in->ir_x;
     pi.ir_y = in->ir_y;
-    pi.move_x = in->stick_x;
-    pi.move_y = in->stick_y;
+    float slow = (h->state.carrying >= 0 || h->state.holding >= 0) ? 0.6f : 1.0f;
+    pi.move_x = in->stick_x * slow;
+    pi.move_y = in->stick_y * slow;
     pi.lean = NH_CLAMP(in->nunchuk_roll / NH_DEG2RAD(30.0f), -1.0f, 1.0f);
     pi.crouch_held = (in->held & NH_BTN_Z) != 0;
     pi.crouch_pressed = (in->pressed & NH_BTN_Z) != 0;
-    pi.frozen = h->caught_t > 0.0f;
+    pi.frozen = h->caught_t > 0.0f || h->mg != MG_KIND_NONE;
+    if (h->hide_prop >= 0) {
+        /* Hidden: look around, don't move. */
+        pi.move_x = pi.move_y = 0.0f;
+        pi.crouch_held = pi.crouch_pressed = false;
+    }
     nh_player_tick(&h->player, &w->L, &pi, &gs->controls, gfx_display_aspect(), HEIST_FOVY);
+}
 
-    if (in->pressed & NH_BTN_B)
-        h->torch_on = !h->torch_on;
+void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
+{
+    World *w = &h->world;
     if (in->pressed & NH_BTN_1)
         gs->show_debug = !gs->show_debug;
+    /* Screens that pause the game. */
+    if (h->screen == SCR_SUMMARY) {
+        plat_rumble(false);
+        if (in->pressed & (NH_BTN_A | NH_BTN_B)) {
+            if (in->pressed & NH_BTN_A)
+                h->job.seed = h->job.seed * 1103515245u + 12345u; /* next job */
+            if (!h->generated) {
+                h->job.type = BT_OFFICE;
+                h->job.size = BS_MEDIUM;
+                h->job.security = 2;
+            }
+            h->want_rebuild = true;
+        }
+        return;
+    }
+    if (h->screen == SCR_MAP || h->screen == SCR_OBJECTIVES) {
+        plat_rumble(false);
+        if (in->pressed & (NH_BTN_PLUS | NH_BTN_MINUS | NH_BTN_B))
+            h->screen = (in->pressed & NH_BTN_PLUS) && h->screen != SCR_MAP   ? SCR_MAP
+                        : (in->pressed & NH_BTN_MINUS) && h->screen != SCR_OBJECTIVES ? SCR_OBJECTIVES
+                                                                                       : SCR_PLAY;
+        return;
+    }
+    h->tick++;
     if (in->pressed & NH_BTN_2)
         h->debug_view = (h->debug_view + 1) % 3;
-    /* Debug: + new seed, - next building type (while the overlay is up). */
     if (gs->show_debug && (in->pressed & (NH_BTN_PLUS | NH_BTN_MINUS))) {
+        /* Debug: + new seed, - next building type. */
         if (!h->generated) {
             h->job.type = BT_OFFICE;
             h->job.size = BS_MEDIUM;
@@ -350,35 +476,40 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
         else
             h->job.type = (uint8_t)((h->job.type + 1) % BT_COUNT);
         h->want_rebuild = true;
+        return;
     }
-
-
-    if (in->pressed & NH_BTN_C) {
-        int d = h->player.mode == NH_MOVE_WALK ? door_in_front(h) : -1;
-        if (d < 0)
-            try_vent(h);
-        else if (d >= 0) {
-            LvDoor *door = &w->L.doors[d];
-            static const char *const k_lock[] = { "", "Locked (pick)", "Keycard required", "Keypad",
-                                                  "Maglock: needs the power cut", "Vault" };
-            if (door->locked && gs->show_debug)
-                door->locked = 0; /* debug: walk through anything */
-            if (door->locked)
-                status(h, door->lock < 6 ? k_lock[door->lock] : "Locked");
-            else {
-                door->target = door->target > 0.5f ? 0.0f : 1.0f;
-                NhVec3 c = lv_cell_center(door->floor, door->x, door->z);
-                if (door->target > 0.5f)
-                    ai_add_anomaly(&h->ai, AN_DOOR_OPEN, c, d);
-                else
-                    ai_clear_anomaly(&h->ai, AN_DOOR_OPEN, d);
-                if (h->player.nnoise < (int)NH_ARRAY_LEN(h->player.noises))
-                    h->player.noises[h->player.nnoise++] = (NhNoise){ c, 4.0f, NH_NOISE_DOOR, 0, 1 };
-            }
+    if (!gs->show_debug && h->mg == MG_KIND_NONE) {
+        if (in->pressed & NH_BTN_PLUS) {
+            h->screen = SCR_MAP;
+            return;
+        }
+        if (in->pressed & NH_BTN_MINUS) {
+            h->screen = SCR_OBJECTIVES;
+            return;
         }
     }
+    update_player(h, in, gs);
+    if ((in->pressed & NH_BTN_B) && h->mg == MG_KIND_NONE && h->hide_prop < 0)
+        h->torch_on = !h->torch_on;
+    if (h->caught_t <= 0.0f) {
+        interact_find(h, gs);
+        interact_update(h, in, gs);
+    }
+    bool a_free = h->takedown < 0 && h->mg == MG_KIND_NONE && h->hide_prop < 0 && h->caught_t <= 0.0f;
+    gadgets_update(h, in, a_free);
     update_guards(h, in, gs);
+    if (h->screen != SCR_PLAY)
+        return;
+    update_security(h);
+    job_tick(&h->state, NH_TICK_DT);
     world_update(w, NH_TICK_DT);
+    /* One re-lit room per tick after a power change. */
+    for (int r = LV_ROOM_FIRST; r < w->L.nrooms; r++)
+        if (h->rebake[r]) {
+            h->rebake[r] = 0;
+            world_rebake_room(w, r);
+            break;
+        }
 
     /* Torch: battery drains while on; aim follows the cursor smoothly. */
     if (h->torch_on) {
@@ -460,7 +591,8 @@ static void draw_dust(const Heist *h, NhVec3 eye, const NhMat34 *view, float alp
 static void draw_guards(void *ctx)
 {
     Heist *h = ctx;
-    guards_draw(&h->gv, &h->ai, &h->world, h->alpha);
+    NhVec3 eye = nh_player_eye(&h->player, &h->world.L, h->alpha);
+    guards_draw(&h->gv, &h->ai, &h->world, h->alpha, h->thermal, eye);
 }
 
 void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps)
@@ -477,21 +609,26 @@ void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps)
     NhLight glights[GFX_MAX_DYN_LIGHTS];
     int ngl = guards_lights(&h->gv, &h->ai, w, eye, alpha, &gtorch, glights, 4);
     gfx_set_lights(glights, ngl);
-    if (h->torch_on)
+    bool torch_vis = h->torch_on && h->hide_prop < 0;
+    if (torch_vis)
         torch_projector(h, eye, &view, &torch);
-    gfx_set_projectors(h->torch_on ? &torch : NULL, gtorch.enabled ? &gtorch : NULL);
-    gfx_set_mode(h->debug_view == 2 ? GFX_MODE_THERMAL : GFX_MODE_NORMAL);
+    gfx_set_projectors(torch_vis ? &torch : NULL, gtorch.enabled ? &gtorch : NULL);
+    gfx_set_mode(h->debug_view == 2 || h->thermal ? GFX_MODE_THERMAL : GFX_MODE_NORMAL);
     h->alpha = alpha;
 
     WorldView wv = { view, eye, HEIST_FOVY, gfx_display_aspect(), 0.08f, 90.0f,
                      h->player.mode == NH_MOVE_VENT, h->player.floor, draw_guards, h };
     world_draw(w, &wv);
+    for (int r = 0; r < w->L.nrooms; r++)
+        if (w->visible[r])
+            h->explored[r] = 1;
     if (h->player.mode == NH_MOVE_WALK) {
         guards_draw_glows(&h->gv, &h->ai, w, &view, alpha);
+        gadgets_render(h, &view);
         if (h->debug_view)
             guards_draw_debug(&h->ai, w);
     }
-    if (h->torch_on && h->player.mode == NH_MOVE_WALK)
+    if (torch_vis && h->player.mode == NH_MOVE_WALK)
         draw_dust(h, eye, &view, alpha);
 
     gfx_set_mode(GFX_MODE_NORMAL);

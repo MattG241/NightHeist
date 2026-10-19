@@ -347,10 +347,65 @@ float ai_visibility(const AiWorld *w, const AiGuard *g, const AiPlayerView *pv, 
     int seen = 0;
     for (int i = 0; i < 3; i++) {
         float t;
-        if (!lv_raycast(w->L, eye, pts[i], &t))
+        if (!lv_raycast(w->L, eye, pts[i], &t) && !ai_smoke_blocks(w, eye, pts[i]))
             seen++;
     }
     return cone * (float)seen / 3.0f;
+}
+
+bool ai_smoke_blocks(const AiWorld *w, NhVec3 a, NhVec3 b)
+{
+    for (int i = 0; i < (int)NH_ARRAY_LEN(w->smoke); i++) {
+        if (w->smoke[i].t <= 0.0f)
+            continue;
+        /* Segment / sphere: distance from the centre to the segment. */
+        NhVec3 ab = nh_v3_sub(b, a), ac = nh_v3_sub(w->smoke[i].pos, a);
+        float len2 = nh_v3_dot(ab, ab);
+        float t = len2 > 1e-6f ? NH_CLAMP(nh_v3_dot(ac, ab) / len2, 0.0f, 1.0f) : 0.0f;
+        NhVec3 q = nh_v3_add(a, nh_v3_scale(ab, t));
+        float r = w->smoke[i].radius * NH_MIN(1.0f, w->smoke[i].t / 3.0f + 0.3f);
+        if (nh_v3_dist(q, w->smoke[i].pos) < r)
+            return true;
+    }
+    return false;
+}
+
+float ai_point_visibility(const AiWorld *w, NhVec3 eye, NhVec3 fwd, float fov_deg, float range, const AiPlayerView *pv,
+                          float *dist)
+{
+    *dist = 1e9f;
+    if (pv->in_vent || pv->hiding_prop >= 0)
+        return 0.0f;
+    NhVec3 chest = nh_v3(pv->pos.x, pv->pos.y + pv->height * 0.62f, pv->pos.z);
+    NhVec3 to = nh_v3_sub(chest, eye);
+    float d = nh_v3_len(to);
+    *dist = d;
+    float light = NH_CLAMP(pv->light, 0.0f, 1.0f);
+    float r = range * (0.22f + 0.78f * light);
+    if (d > r || d < 1e-3f)
+        return 0.0f;
+    float c = nh_v3_dot(nh_v3_scale(to, 1.0f / d), fwd);
+    if (c < cosf(fov_deg * 0.5f * NH_PI / 180.0f))
+        return 0.0f;
+    NhVec3 pts[3] = { pv->head, chest, nh_v3(pv->pos.x, pv->pos.y + 0.25f, pv->pos.z) };
+    int seen = 0;
+    for (int i = 0; i < 3; i++) {
+        float t;
+        if (!lv_raycast(w->L, eye, pts[i], &t) && !ai_smoke_blocks(w, eye, pts[i]))
+            seen++;
+    }
+    return (float)seen / 3.0f;
+}
+
+void ai_add_smoke(AiWorld *w, NhVec3 pos, float radius, float seconds)
+{
+    int slot = 0;
+    for (int i = 1; i < (int)NH_ARRAY_LEN(w->smoke); i++)
+        if (w->smoke[i].t < w->smoke[slot].t)
+            slot = i;
+    w->smoke[slot].pos = pos;
+    w->smoke[slot].radius = radius;
+    w->smoke[slot].t = seconds;
 }
 
 float ai_gain_rate(const AiWorld *w, const AiGuard *g, const AiPlayerView *pv, float vis, float d)
@@ -614,7 +669,7 @@ static void see_anomalies(AiWorld *w, AiGuard *g, int gi)
         if (d > 1.5f && nh_v3_dot(nh_v3_norm(nh_v3(to.x, 0, to.z)), fwd) < 0.45f)
             continue;
         float t;
-        if (lv_raycast(w->L, eye, an->pos, &t))
+        if (lv_raycast(w->L, eye, an->pos, &t) || ai_smoke_blocks(w, eye, an->pos))
             continue;
         an->seen_mask |= 1u << gi;
         if (A(g)->civilian) {
@@ -1214,6 +1269,18 @@ void ai_tick(AiWorld *w, const AiPlayerView *pv_in)
 {
     const float dt = NH_TICK_DT;
     w->nev = 0;
+    for (int i = 0; i < (int)NH_ARRAY_LEN(w->smoke); i++)
+        if (w->smoke[i].t > 0.0f)
+            w->smoke[i].t -= dt;
+    for (int i = 0; i < w->n; i++) {
+        AiGuard *g = &w->g[i];
+        if (g->ko_timer > 0.0f && !down_state(g->state)) {
+            g->ko_timer -= dt;
+            g->speed *= 0.5f;
+            if (g->ko_timer <= 0.0f)
+                ai_knockout(w, i);
+        }
+    }
     AiPlayerView lit = *pv_in;
     lit.light = NH_MAX(lit.light, torch_light_on_player(w, pv_in));
     const AiPlayerView *pv = &lit;
@@ -1374,4 +1441,72 @@ void ai_raise_alarm(AiWorld *w, NhVec3 where)
             start_search(w, g, where, true, true);
         }
     }
+}
+
+void ai_report(AiWorld *w, NhVec3 where)
+{
+    w->alerts++;
+    emit(w, EV_RADIO, 0, BARK_CAMERA, where);
+    /* The two nearest free guards come running; the rest walk over. */
+    int best[2] = { -1, -1 };
+    float bd[2] = { 1e9f, 1e9f };
+    for (int i = 0; i < w->n; i++) {
+        AiGuard *g = &w->g[i];
+        if (!g->active || down_state(g->state) || A(g)->civilian || g->arch == ARCH_CAMOP || g->arch == ARCH_DOG ||
+            g->state == AS_ALERT)
+            continue;
+        float d = nh_v3_dist(g->pos, where);
+        if (d < bd[0]) {
+            bd[1] = bd[0];
+            best[1] = best[0];
+            bd[0] = d;
+            best[0] = i;
+        } else if (d < bd[1]) {
+            bd[1] = d;
+            best[1] = i;
+        }
+    }
+    for (int k = 0; k < 2; k++) {
+        if (best[k] < 0)
+            continue;
+        AiGuard *g = &w->g[best[k]];
+        g->lkp = where;
+        g->awareness = NH_MIN(1.0f, g->awareness + 0.4f);
+        start_search(w, g, where, true, true);
+        g->suspicion = NH_MAX(g->suspicion, 0.7f);
+    }
+    if (w->alerts >= w->alarm_threshold)
+        ai_raise_alarm(w, where);
+}
+
+int ai_spawn_police(AiWorld *w, NhVec3 at, NhVec3 lkp)
+{
+    int i = ai_add_guard(w, ARCH_POLICE, at, 0.0f, NULL, 0);
+    if (i < 0)
+        return -1;
+    AiGuard *g = &w->g[i];
+    g->awareness = 1.0f;
+    g->lkp = lkp;
+    start_search(w, g, lkp, true, true);
+    g->search_t = 600.0f; /* they don't give up */
+    bark(w, g, BARK_POLICE, true);
+    return i;
+}
+
+void ai_tranquilise(AiWorld *w, int gi, float seconds)
+{
+    AiGuard *g = &w->g[gi];
+    if (!g->active || down_state(g->state))
+        return;
+    g->ko_timer = seconds;
+    g->suspicion = NH_MAX(g->suspicion, 0.4f);
+    bark(w, g, BARK_HUH, true);
+}
+
+void ai_carry(AiWorld *w, int gi, bool carried)
+{
+    AiGuard *g = &w->g[gi];
+    if (g->state != AS_KO && g->state != AS_CARRIED)
+        return;
+    g->state = carried ? AS_CARRIED : AS_KO;
 }

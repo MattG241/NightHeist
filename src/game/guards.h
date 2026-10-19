@@ -34,7 +34,8 @@ void guards_torch(const GuardsVis *gv, const AiWorld *ai, int i, float alpha, Nh
  * the number of lights written (<= max). */
 int guards_lights(const GuardsVis *gv, const AiWorld *ai, const World *w, NhVec3 eye, float alpha,
                   GfxProjector *proj, NhLight *lights, int max);
-void guards_draw(const GuardsVis *gv, const AiWorld *ai, const World *w, float alpha);
+/* xray: thermal goggles, draw every guard within 30 m of the eye through walls. */
+void guards_draw(const GuardsVis *gv, const AiWorld *ai, const World *w, float alpha, bool xray, NhVec3 eye);
 /* Lens glows (additive sprites); call in the 3D pass after guards_draw. */
 void guards_draw_glows(const GuardsVis *gv, const AiWorld *ai, const World *w, const NhMat34 *view,
                        float alpha);

@@ -60,6 +60,7 @@ enum {
     GFX_MAT_WARM = 1u << 7,     /* shows hot in thermal mode (people, dogs) */
     GFX_MAT_NOFOG = 1u << 8,
     GFX_MAT_VCOLOR = 1u << 9,   /* lit: vertex colour is the albedo (characters, dynamic props) */
+    GFX_MAT_XRAY = 1u << 10,    /* drawn over everything (thermal goggles through walls) */
 };
 
 typedef struct GfxMaterial {

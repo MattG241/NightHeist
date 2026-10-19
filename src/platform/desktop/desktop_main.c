@@ -3,7 +3,7 @@
  * Mouse + keyboard stand in for the Wii Remote + Nunchuk:
  *   mouse = pointer, LMB = A, RMB = B, WASD = stick, Q/E = Nunchuk tilt (lean),
  *   Ctrl = Z, F = C, 1/2 = 1/2, Enter = +, Tab = -, arrows = D-pad,
- *   [ ] = twist the remote (roll), Esc = HOME. */
+ *   [ ] = twist the remote (roll; \\ levels it), Esc = HOME. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -306,7 +306,14 @@ void plat_input_poll(NhInput *out)
         out->stick_x = sx;
         out->stick_y = sy;
         out->nunchuk_roll = NH_DEG2RAD(30.0f) * (float)(k[SDL_SCANCODE_E] - k[SDL_SCANCODE_Q]);
-        out->remote_roll = NH_DEG2RAD(45.0f) * (float)(k[SDL_SCANCODE_RIGHTBRACKET] - k[SDL_SCANCODE_LEFTBRACKET]);
+        /* [ and ] turn the remote and it stays turned (like holding it at an
+         * angle); backslash levels it again. */
+        static float twist;
+        twist += NH_DEG2RAD(70.0f) / 60.0f * (float)(k[SDL_SCANCODE_RIGHTBRACKET] - k[SDL_SCANCODE_LEFTBRACKET]);
+        if (k[SDL_SCANCODE_BACKSLASH])
+            twist = 0.0f;
+        twist = NH_CLAMP(twist, NH_DEG2RAD(-80.0f), NH_DEG2RAD(80.0f));
+        out->remote_roll = twist;
     }
 
     out->held = held;

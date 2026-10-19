@@ -27,6 +27,9 @@ int nh_test_checks;
     X(test_gen_determinism)    \
     X(test_gen_distinct)       \
     X(test_gen_nav)            \
+    X(test_minigames)          \
+    X(test_job)                \
+    X(test_security)           \
     X(test_gen_solvable)
 
 #define X(name) void name(void);

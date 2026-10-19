@@ -50,6 +50,8 @@ typedef struct World {
 /* L must already be filled (generator or hand-built). */
 bool world_build(World *w, NhArena *level_arena, NhArena *scratch);
 void world_free(World *w);
+/* Re-light one room's meshes and props after lights change (power cut). */
+void world_rebake_room(World *w, int room);
 /* Re-bake after lights switch or power changes. */
 void world_rebake(World *w);
 void world_update(World *w, float dt);

@@ -475,6 +475,8 @@ static void apply_blend(u16 flags)
         GX_SetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_CLEAR);
         GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
     }
+    if (flags & GFX_MAT_XRAY)
+        GX_SetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
     if (flags & GFX_MAT_ALPHATEST) {
         GX_SetAlphaCompare(GX_GREATER, 127, GX_AOP_AND, GX_ALWAYS, 0);
         GX_SetZCompLoc(GX_FALSE);
