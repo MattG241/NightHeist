@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "audio.h"
 #include "core/nh_fixedstep.h"
 #include "core/nh_proptab.h"
 #include "gadgets.h"
@@ -136,6 +137,10 @@ bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const
     h->torch_on = true;
     h->battery = 1.0f;
     h->thermal_battery = 1.0f;
+    h->snd_alarm = h->snd_siren = h->snd_drill = h->snd_phone = -1;
+    for (int i = 0; i < (int)NH_ARRAY_LEN(h->snd_proj); i++)
+        h->snd_proj[i] = -1;
+    h->was_torch = true;
     h->torch_dir = nh_dir_from_yaw_pitch(yaw, 0);
     h->hide_prop = -1;
     s_cookie = res_texture("cookie");
@@ -167,8 +172,17 @@ bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const
     return true;
 }
 
+static void stop_loops(Heist *h)
+{
+    audio_stop_effects();
+    h->snd_alarm = h->snd_siren = h->snd_drill = h->snd_phone = -1;
+    for (int i = 0; i < (int)NH_ARRAY_LEN(h->snd_proj); i++)
+        h->snd_proj[i] = -1;
+}
+
 void heist_end(Heist *h)
 {
+    stop_loops(h);
     world_free(&h->world);
 }
 
@@ -234,6 +248,8 @@ void heist_camera(const Heist *h, float alpha, NhMat34 *view, NhVec3 *eye)
 
 static void subtitle(Heist *h, const char *msg)
 {
+    if (!h->subtitles)
+        return;
     snprintf(h->subtitle, sizeof(h->subtitle), "%s", msg);
     h->subtitle_ticks = 150;
 }
@@ -311,16 +327,27 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         const AiEvent *e = &ai->ev[i];
         float d = nh_v3_dist(e->pos, p->pos);
         switch (e->type) {
-        case EV_BARK:
+        case EV_BARK: {
+            int b = e->arg;
+            int sfx = b == BARK_DOG ? SFX_DOG_BARK
+                    : b == BARK_THERE || b == BARK_FOUND || b == BARK_MAN_DOWN || b == BARK_SCREAM || b == BARK_POLICE
+                        ? SFX_GUARD_ALERT
+                    : b == BARK_CHAT || b == BARK_GIVEUP || b == BARK_CHECKIN || b == BARK_CHECKIN_OK ? SFX_GUARD_MUTTER
+                    : b == BARK_RADIO_SPOTTED                                                         ? SFX_RADIO
+                                                                                                      : SFX_GUARD_HUH;
+            audio_at(sfx, e->pos, 0.9f, 22.0f);
+        }
             if (d < 16.0f && e->arg < BARK_COUNT && k_barks[e->arg])
                 subtitle(h, k_barks[e->arg]);
             if (e->arg == BARK_MAN_DOWN)
                 job_event(&h->state, &h->plan, JE_BODY_FOUND, -1, 0);
             break;
         case EV_RADIO:
+            audio_play(SFX_RADIO, 0.3f, 0.0f, 1.0f);
             subtitle(h, e->arg == BARK_CAMERA ? "Control: camera has someone. Moving in." : k_barks[BARK_RADIO_SPOTTED]);
             break;
         case EV_SPOTTED:
+            audio_play(SFX_STINGER, 0.8f, 0.0f, 1.0f);
             heist_status(h, "Spotted!");
             job_event(&h->state, &h->plan, JE_SPOTTED, -1, 0);
             h->rumble_ticks = 12;
@@ -331,20 +358,24 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         case EV_TAKEDOWN: {
             const AiGuard *g = &ai->g[e->guard];
             ai_add_anomaly(ai, AN_BODY, nh_v3_add(g->pos, nh_v3(0, 0.3f, 0)), e->guard);
+            audio_at(SFX_TAKEDOWN, g->pos, 1.0f, 20.0f);
             job_event(&h->state, &h->plan, JE_TAKEDOWN, -1, 0);
             heist_status(h, "Takedown");
             break;
         }
         case EV_FOUND_HIDING:
+            audio_play(SFX_GUARD_ALERT, 0.9f, 0.0f, 1.0f);
             interact_unhide(h);
             heist_status(h, "Found!");
             break;
         case EV_CHECKIN_MISSED:
+            audio_play(SFX_RADIO, 0.3f, 0.0f, 1.0f);
             subtitle(h, "Control: no answer from your partner. Go and look.");
             break;
         case EV_CAUGHT:
             if (h->caught_t <= 0.0f) {
                 h->caught_t = 2.5f;
+                audio_play(SFX_CAUGHT, 0.9f, 0.0f, 1.0f);
                 heist_status(h, "CAUGHT");
                 h->rumble_ticks = 40;
             }
@@ -364,6 +395,7 @@ static void update_guards(Heist *h, const NhInput *in, const GameSettings *gs)
         h->heartbeat_t -= NH_TICK_DT;
         if (h->heartbeat_t <= 0.0f) {
             h->heartbeat_t = nh_lerpf(1.0f, 0.42f, (sus - 0.45f) / 0.55f);
+            audio_play(SFX_HEARTBEAT, 0.25f + 0.35f * sus, 0.0f, 1.0f);
             h->rumble_ticks = NH_MAX(h->rumble_ticks, 4);
         }
     } else {
@@ -408,6 +440,10 @@ static void update_security(Heist *h)
         }
         h->rumble_ticks = NH_MAX(h->rumble_ticks, 10);
     }
+    if (ev & SEC_EV_CAMERA)
+        audio_at(SFX_CAMERA_BEEP, where, 0.6f, 14.0f);
+    if (ev & SEC_EV_LASER)
+        audio_play(SFX_LASER_TRIP, 0.7f, 0.0f, 1.0f);
     if (ev & SEC_EV_LASER)
         heist_alarm(h, where, "Laser tripped!");
     if (ev & SEC_EV_ENTRY_TIMEOUT)
@@ -453,6 +489,122 @@ static void update_security(Heist *h)
     }
 }
 
+/* Footsteps, loops that follow the world's state, and the music mix. */
+static void update_audio(Heist *h)
+{
+    const float dt = NH_TICK_DT;
+    NhPlayer *p = &h->player;
+    const Level *L = &h->world.L;
+    audio_listener(nh_player_eye(p, L, 1.0f), p->yaw, p->floor, L);
+    /* The player's own steps, landings and the noises the tick made. */
+    for (int i = 0; i < p->nnoise; i++) {
+        const NhNoise *n = &p->noises[i];
+        if (n->kind != NH_NOISE_FOOTSTEP)
+            continue;
+        float vol = NH_CLAMP(0.15f + n->radius / 14.0f, 0.15f, 0.9f);
+        audio_play(SFX_STEP_CONCRETE + NH_MIN(n->surface, LV_SURF_COUNT - 1), vol, 0.0f, 0.9f + 0.03f * (float)(h->tick % 7));
+    }
+    /* Guards' steps: you hear them before you see them. */
+    for (int i = 0; i < h->ai.n && i < AI_MAX_GUARDS; i++) {
+        const AiGuard *g = &h->ai.g[i];
+        if (!g->active || g->state == AS_KO || g->state == AS_CARRIED) {
+            h->guard_prev[i] = g->pos;
+            continue;
+        }
+        float moved = nh_v3_dist(g->pos, h->guard_prev[i]);
+        h->guard_prev[i] = g->pos;
+        if (moved > 1.0f) /* teleported (spawned) */
+            continue;
+        h->guard_step[i] += moved;
+        float stride = g->arch == ARCH_DOG ? 0.45f : 0.75f;
+        if (h->guard_step[i] >= stride) {
+            h->guard_step[i] -= stride;
+            const LvCell *c = lv_cell(L, lv_floor_of(g->pos.y + 0.3f), lv_cell_of(g->pos.x), lv_cell_of(g->pos.z));
+            int surf = g->arch == ARCH_DOG ? LV_SURF_CARPET : c ? c->surface : LV_SURF_CONCRETE;
+            float run = moved / dt > 2.5f ? 1.0f : 0.0f;
+            audio_at(SFX_STEP_CONCRETE + surf, g->pos, 0.45f + 0.3f * run, 14.0f);
+        }
+    }
+    /* Torch and thermal clicks */
+    if (h->torch_on != h->was_torch)
+        audio_play(SFX_TORCH, 0.5f, 0.3f, 1.0f);
+    if (h->thermal != h->was_thermal)
+        audio_play(h->thermal ? SFX_THERMAL_ON : SFX_THERMAL_OFF, 0.5f, 0.0f, 1.0f);
+    h->was_torch = h->torch_on;
+    h->was_thermal = h->thermal;
+    /* Alarm bell and sirens */
+    bool alarm = h->ai.alarm || h->state.alarm;
+    if (alarm && h->snd_alarm < 0)
+        h->snd_alarm = audio_loop(SFX_ALARM, 0.0f);
+    if (h->snd_alarm >= 0)
+        audio_loop_set(h->snd_alarm, h->screen == SCR_PLAY ? 0.35f : 0.12f, 0.0f);
+    float eta = h->state.police_eta;
+    bool sirens = h->state.police_here || (eta >= 0.0f && eta < 30.0f);
+    if (sirens && h->snd_siren < 0)
+        h->snd_siren = audio_loop(SFX_SIREN, 0.0f);
+    if (h->snd_siren >= 0)
+        audio_loop_set(h->snd_siren, h->state.police_here ? 0.45f : 0.45f * (1.0f - eta / 30.0f), 0.3f);
+    /* The door alarm counting down beeps every second. */
+    if (h->sec.entry_door >= 0) {
+        h->entry_beep_t -= dt;
+        if (h->entry_beep_t <= 0.0f) {
+            h->entry_beep_t = h->sec.entry_t < 5.0f ? 0.5f : 1.0f;
+            audio_play(SFX_KEYPAD_BEEP, 0.45f, 0.0f, 1.0f);
+        }
+    }
+    /* A camera that has you in frame chirps as it makes up its mind. */
+    h->cam_beep_t -= dt;
+    if (h->sec.max_sus > 0.15f && h->sec.max_sus < 1.0f && h->cam_beep_t <= 0.0f) {
+        h->cam_beep_t = nh_lerpf(1.2f, 0.35f, h->sec.max_sus);
+        audio_play(SFX_CAMERA_BEEP, 0.3f, 0.0f, 1.0f);
+    }
+    /* Drill, noisemakers, a ringing phone */
+    if (h->drill_t > 0.0f) {
+        if (h->snd_drill < 0)
+            h->snd_drill = audio_loop(SFX_DRILL, 0.0f);
+        audio_loop_at(h->snd_drill, h->plan.ent[h->drill_target].pos, 0.8f, 30.0f);
+    } else if (h->snd_drill >= 0) {
+        audio_loop_stop(&h->snd_drill);
+        audio_at(SFX_SAFE_OPEN, h->plan.ent[h->drill_target].pos, 0.9f, 20.0f);
+    }
+    for (int i = 0; i < (int)NH_ARRAY_LEN(h->proj); i++) {
+        const Projectile *pr = &h->proj[i];
+        bool buzzing = pr->active && pr->landed && pr->gadget == GD_NOISEMAKER && pr->t > 0.0f;
+        if (buzzing) {
+            if (h->snd_proj[i] < 0)
+                h->snd_proj[i] = audio_loop(SFX_NOISEMAKER, 0.0f);
+            audio_loop_at(h->snd_proj[i], pr->pos, 0.7f, 26.0f);
+        } else if (h->snd_proj[i] >= 0) {
+            audio_loop_stop(&h->snd_proj[i]);
+        }
+    }
+    if (h->phone_t > 0.0f) {
+        h->phone_t -= dt;
+        if (h->snd_phone < 0)
+            h->snd_phone = audio_loop(SFX_PHONE, 0.0f);
+        audio_loop_at(h->snd_phone, h->phone_pos, 0.7f, 24.0f);
+    } else if (h->snd_phone >= 0) {
+        audio_loop_stop(&h->snd_phone);
+    }
+    /* Music: ambience always; the pulse once anyone's suspicious; tension
+     * while they're looking for you; the action layer when it's all gone wrong. */
+    float sus = NH_MAX(h->ai.max_suspicion, h->sec.max_sus);
+    bool hunting = false;
+    for (int i = 0; i < h->ai.n; i++) {
+        const AiGuard *g = &h->ai.g[i];
+        hunting |= g->active && (g->state == AS_ALERT || g->state == AS_SEARCH || g->state == AS_INVESTIGATE);
+    }
+    float mix[NH_MUSIC_LAYERS] = { 1.0f, 0.0f, 0.0f, 0.0f };
+    mix[1] = sus > 0.2f || hunting || h->mg != MG_KIND_NONE ? 0.8f : 0.0f;
+    mix[2] = hunting || sus > 0.6f ? 0.8f : 0.0f;
+    mix[3] = alarm || h->caught_t > 0.0f ? 1.0f : 0.0f;
+    if (mix[3] > 0.0f)
+        mix[0] = 0.4f;
+    if (h->screen == SCR_SUMMARY)
+        mix[1] = mix[2] = mix[3] = 0.0f;
+    audio_music_mix(mix);
+}
+
 static void update_player(Heist *h, const NhInput *in, GameSettings *gs)
 {
     World *w = &h->world;
@@ -479,11 +631,20 @@ static void update_player(Heist *h, const NhInput *in, GameSettings *gs)
 void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
 {
     World *w = &h->world;
+    h->subtitles = gs->subtitles;
     if (in->pressed & NH_BTN_1)
         gs->show_debug = !gs->show_debug;
     /* Screens that pause the game. */
     if (h->screen == SCR_SUMMARY) {
         plat_rumble(false);
+        if (!h->summary_audio) {
+            stop_loops(h);
+            h->summary_audio = true;
+            bool good = h->result.outcome == JOB_SUCCESS || h->result.outcome == JOB_PARTIAL;
+            audio_play(good ? SFX_SUCCESS : SFX_FAIL, 0.7f, 0.0f, 1.0f);
+            static const float calm[NH_MUSIC_LAYERS] = { 0.6f, 0.0f, 0.0f, 0.0f };
+            audio_music_mix(calm);
+        }
         if (h->campaign) {
             if (in->pressed & NH_BTN_A)
                 h->done = true;
@@ -574,6 +735,7 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
     h->light_level = NH_CLAMP(h->light_level, 0.0f, 1.0f);
     if (h->status_ticks > 0)
         h->status_ticks--;
+    update_audio(h);
 }
 
 static void torch_projector(const Heist *h, NhVec3 eye, const NhMat34 *view, GfxProjector *pr)

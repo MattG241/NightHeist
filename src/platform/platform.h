@@ -88,7 +88,13 @@ typedef struct NhSound {
 
 /* volume 0..1, pan -1 (left) .. +1 (right). Returns voice id or -1. */
 int plat_audio_play(const NhSound *s, float volume, float pan);
+/* A looping voice; it plays until stopped. */
+int plat_audio_loop(const NhSound *s, float volume, float pan);
+void plat_audio_set(int voice, float volume, float pan);
 void plat_audio_stop(int voice);
+/* Calls between begin and end take effect together (music stems start in sync). */
+void plat_audio_begin(void);
+void plat_audio_end(void);
 
 /* ---- debug -------------------------------------------------------------- */
 

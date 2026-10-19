@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "audio.h"
 #include "core/nh_fixedstep.h"
 #include "core/nh_proptab.h"
 
@@ -379,9 +380,17 @@ void interact_carry_tick(Heist *h)
 static void open_door(Heist *h, int di)
 {
     LvDoor *d = &h->world.L.doors[di];
+    NhVec3 c = door_center(d);
+    if (d->locked) {
+        int s = d->lock == LV_LOCK_KEYCARD ? SFX_SWIPE : d->lock == LV_LOCK_CODE ? SFX_KEYPAD_OK : SFX_UNLOCK;
+        audio_at(s, c, 0.8f, 12.0f);
+    }
     d->locked = 0;
     d->target = d->target > 0.5f ? 0.0f : 1.0f;
-    NhVec3 c = door_center(d);
+    if (d->kind == LV_DOOR_VAULT)
+        audio_at(SFX_DOOR_VAULT, c, 1.0f, 30.0f);
+    else
+        audio_at(d->target > 0.5f ? SFX_DOOR_OPEN : SFX_DOOR_CLOSE, c, 0.8f, 18.0f);
     if (d->target > 0.5f) {
         ai_add_anomaly(&h->ai, AN_DOOR_OPEN, c, di);
         if (d->flags & LV_DOOR_F_EXTERIOR)
@@ -403,6 +412,7 @@ static void take_loot(Heist *h, int i)
     ai_add_anomaly(&h->ai, AN_LOOT_MISSING, e->pos, i);
     if ((e->flags & ENTF_SECURED) && h->world.L.power[h->sec.security_circuit & 15])
         heist_alarm(h, e->pos, "Display case alarm!");
+    audio_play(e->flags & ENTF_HEAVY ? SFX_PICKUP_HEAVY : SFX_PICKUP, 0.6f, 0.0f, 1.0f);
     if (e->flags & ENTF_HEAVY) {
         h->state.holding = (int16_t)i;
         job_mark_taken(&h->state, i);
@@ -420,6 +430,7 @@ static void open_safe(Heist *h, int i)
     job_mark_taken(&h->state, i);
     job_event(&h->state, &h->plan, JE_SAFE_OPEN, i, 0);
     ai_add_anomaly(&h->ai, AN_SAFE_OPEN, h->plan.ent[i].pos, i);
+    audio_at(SFX_SAFE_OPEN, h->plan.ent[i].pos, 0.9f, 15.0f);
     heist_status(h, "Safe open");
 }
 
@@ -449,6 +460,7 @@ static void perform(Heist *h, const Action *a)
         job_mark_taken(j, a->target);
         if (e->prop >= 0)
             L->props[e->prop].flags |= LV_P_HIDDEN;
+        audio_play(SFX_PICKUP, 0.4f, 0.0f, 1.3f);
         char buf[64];
         if (e->kind == ENT_KEYCARD) {
             j->keycards |= 1u << (e->key_id & 31);
@@ -473,12 +485,14 @@ static void perform(Heist *h, const Action *a)
         break;
     case ACT_CONSOLE:
         h->cams_looped = 120.0f;
+        audio_play(SFX_HACK_OK, 0.5f, 0.0f, 1.0f);
         heist_status(h, "Camera feeds looped for 2 minutes");
         break;
     case ACT_FUSE: {
         const NhEntity *e = &h->plan.ent[a->target];
         bool on = L->power[e->key_id & 15];
         heist_set_power(h, e->key_id, !on);
+        audio_at(on ? SFX_POWER_DOWN : SFX_POWER_UP, e->pos, 0.9f, 25.0f);
         if (on)
             ai_add_anomaly(&h->ai, AN_LIGHTS_OFF, e->pos, e->key_id);
         else
@@ -488,17 +502,21 @@ static void perform(Heist *h, const Action *a)
     }
     case ACT_PANEL:
         sec_disarm(&h->sec);
+        audio_play(SFX_KEYPAD_OK, 0.6f, 0.0f, 1.0f);
         heist_status(h, "Alarm panel disarmed");
         break;
     case ACT_PHONE:
         job_event(j, &h->plan, JE_BUG, a->target, 0);
+        audio_play(SFX_PICK_SET, 0.5f, 0.0f, 0.8f);
         heist_status(h, "Bug planted");
         break;
     case ACT_PHOTO:
         job_event(j, &h->plan, JE_PHOTO, a->target, 0);
+        audio_play(SFX_TORCH, 0.6f, 0.0f, 0.7f);
         heist_status(h, "Photographed");
         break;
     case ACT_HIDE:
+        audio_play(SFX_HIDE, 0.5f, 0.0f, 1.0f);
         if (h->hide_prop >= 0) {
             interact_unhide(h);
         } else {
@@ -514,10 +532,12 @@ static void perform(Heist *h, const Action *a)
     case ACT_BODY_PICK:
         j->carrying = a->target;
         ai_carry(&h->ai, a->target, true);
+        audio_play(SFX_PICKUP_HEAVY, 0.5f, 0.0f, 0.9f);
         break;
     case ACT_BODY_DROP:
         ai_carry(&h->ai, j->carrying, false);
         j->carrying = -1;
+        audio_play(SFX_BODY_THUD, 0.6f, 0.0f, 1.0f);
         break;
     case ACT_BODY_STASH: {
         int gi = j->carrying;
@@ -525,6 +545,7 @@ static void perform(Heist *h, const Action *a)
         h->ai.g[gi].active = 0;
         ai_clear_anomaly(&h->ai, AN_BODY, gi);
         j->carrying = -1;
+        audio_play(SFX_HIDE, 0.5f, 0.0f, 0.8f);
         heist_status(h, "Body hidden");
         break;
     }
@@ -546,6 +567,7 @@ static void perform(Heist *h, const Action *a)
         j->taken[j->holding >> 3] &= (uint8_t)~(1u << (j->holding & 7));
         j->holding = -1;
         e->flags &= (uint8_t)~ENTF_SECURED;
+        audio_play(SFX_BODY_THUD, 0.6f, 0.0f, 1.2f);
         break;
     }
     case ACT_LADDER_UP: {
@@ -553,6 +575,7 @@ static void perform(Heist *h, const Action *a)
         NhVec3 in = nh_dir_from_yaw_pitch(e->yaw, 0); /* ladder faces out from the wall */
         NhVec3 top = nh_v3(e->pos.x - in.x * 1.2f, lv_floor_y(L->floors), e->pos.z - in.z * 1.2f);
         nh_player_init(p, top, p->yaw);
+        audio_play(SFX_STEP_METAL, 0.5f, 0.0f, 1.0f);
         heist_status(h, "On the roof");
         break;
     }
@@ -565,12 +588,14 @@ static void perform(Heist *h, const Action *a)
     case ACT_HATCH_UP: {
         const NhEntity *e = &h->plan.ent[a->target];
         nh_player_init(p, nh_v3(e->pos.x + 0.9f, lv_floor_y(L->floors), e->pos.z), p->yaw);
+        audio_play(SFX_DOOR_CLOSE, 0.5f, 0.0f, 1.3f);
         heist_status(h, "On the roof");
         break;
     }
     case ACT_HATCH_DOWN: {
         const NhEntity *e = &h->plan.ent[a->target];
         nh_player_init(p, nh_v3(e->pos.x, lv_floor_y(L->floors - 1), e->pos.z), p->yaw);
+        audio_play(SFX_LAND, 0.6f, 0.0f, 1.0f);
         p->crouch = 1.0f;
         break;
     }
@@ -579,6 +604,7 @@ static void perform(Heist *h, const Action *a)
         NhVec3 ctr = lv_cell_center(p->floor, cx, cz);
         if (p->mode == NH_MOVE_WALK) {
             p->mode = NH_MOVE_VENT;
+            audio_play(SFX_STEP_METAL, 0.6f, 0.0f, 0.8f);
             p->pos = p->prev_pos = nh_v3(ctr.x, lv_floor_y(p->floor) + LV_CEIL + 0.05f, ctr.z);
             heist_status(h, "In the vents");
         } else {
@@ -586,6 +612,7 @@ static void perform(Heist *h, const Action *a)
             p->pos = p->prev_pos = nh_v3(ctr.x, lv_floor_y(p->floor) + 0.4f, ctr.z);
             p->grounded = false;
             p->crouch = 1.0f;
+            audio_play(SFX_LAND, 0.6f, 0.0f, 1.0f);
             heist_noise(h, ctr, 3.0f, NH_NOISE_GADGET);
         }
         break;
@@ -597,6 +624,7 @@ static void perform(Heist *h, const Action *a)
             j->holding = -1;
         }
         job_event(j, &h->plan, JE_EXTRACT, -1, 0);
+        audio_play(SFX_VAN, 0.8f, 0.0f, 1.0f);
         job_result(j, &h->result);
         h->screen = SCR_SUMMARY;
         break;
@@ -672,6 +700,15 @@ void interact_update(Heist *h, const NhInput *in, const GameSettings *gs)
             float px = (in->ir_x - 170.0f) / 300.0f, py = (in->ir_y - 120.0f) / 240.0f;
             ev = hk_tick(&h->hk, NH_CLAMP(px, 0.0f, 1.0f), NH_CLAMP(py, 0.0f, 1.0f), in->ir_valid, dt);
         }
+        static const int k_mg_sfx[3][6] = {
+            /* NONE, TICK, SET, SLIP, DONE, FAIL */
+            [0] = { -1, SFX_PICK_TICK, SFX_PICK_SET, SFX_PICK_SLIP, -1, SFX_PICK_SLIP },
+            [1] = { -1, SFX_SAFE_CLICK, SFX_SAFE_SET, SFX_SAFE_SET, -1, SFX_UI_DENY },
+            [2] = { -1, SFX_HACK_BEEP, SFX_HACK_OK, SFX_UI_DENY, SFX_HACK_DONE, SFX_HACK_FAIL },
+        };
+        int mk = h->mg == MG_KIND_LOCK ? 0 : h->mg == MG_KIND_SAFE ? 1 : 2;
+        if (ev > MG_NONE && ev <= MG_FAIL && k_mg_sfx[mk][ev] >= 0)
+            audio_play(k_mg_sfx[mk][ev], ev == MG_TICK ? 0.35f : 0.7f, 0.0f, 1.0f);
         if (ev == MG_DONE)
             finish_minigame(h, true);
         else if (ev == MG_FAIL)
@@ -685,6 +722,8 @@ void interact_update(Heist *h, const NhInput *in, const GameSettings *gs)
     if (h->c_latch)
         return;
     if (a->kind == ACT_NOTHING || a->blocked) {
+        if (a->blocked && c_pressed)
+            audio_play(a->kind == ACT_DOOR ? SFX_DOOR_LOCKED : SFX_UI_DENY, 0.6f, 0.0f, 1.0f);
         h->hold_t = 0.0f;
         return;
     }
@@ -698,6 +737,11 @@ void interact_update(Heist *h, const NhInput *in, const GameSettings *gs)
         return;
     }
     if (c_held) {
+        /* Keypads and panels beep as the digits go in. */
+        bool keys = a->kind == ACT_PANEL || (a->kind == ACT_DOOR && (h->world.L.doors[a->target].lock == LV_LOCK_CODE ||
+                                                                     h->world.L.doors[a->target].lock == LV_LOCK_VAULT));
+        if (keys && (int)(h->hold_t / 0.22f) != (int)((h->hold_t + dt) / 0.22f))
+            audio_play(SFX_KEYPAD_BEEP, 0.4f, 0.0f, 0.9f + 0.05f * (float)((int)(h->hold_t / 0.22f) % 4));
         h->hold_t += dt;
         if (h->hold_t >= a->hold) {
             Action copy = *a;

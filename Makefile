@@ -41,7 +41,7 @@ TEST_OBJ    := $(patsubst %.c,$(TEST_BUILD)/%.o,$(CORE_SRC) src/game/testlevel.c
 
 DIST_DIR := dist/apps/NightHeist
 
-.PHONY: seedmap all desktop test wii wii-docker assets package clean
+.PHONY: seedmap audiodump all desktop test wii wii-docker assets package clean
 
 all: desktop test
 
@@ -75,6 +75,12 @@ wii-docker:
 	docker run --rm -u $$(id -u):$$(id -g) -v "$(CURDIR)":/src -w /src $(DOCKER_IMAGE) make wii
 
 seedmap: build/seedmap
+
+audiodump: build/audiodump
+
+build/audiodump: tools/audiodump.c $(CORE_SRC) $(wildcard src/core/*.h)
+	@mkdir -p build
+	$(CC) -std=c11 -O2 -Wall -Wextra -Isrc -o $@ tools/audiodump.c $(CORE_SRC) -lm
 
 build/seedmap: tools/seedmap.c $(CORE_SRC) $(wildcard src/core/*.h)
 	@mkdir -p build

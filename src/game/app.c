@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "audio.h"
 #include "core/nh_arena.h"
 #include "core/nh_fixedstep.h"
 #include "core/nh_save.h"
@@ -91,6 +92,7 @@ static void apply_settings(void)
     s_settings.subtitles = s_save_settings.subtitles;
     s_settings.music_volume = (float)s_save_settings.music / 10.0f;
     s_settings.sfx_volume = (float)s_save_settings.sfx / 10.0f;
+    audio_volumes(s_save_settings.music, s_save_settings.sfx);
 }
 
 /* Opt-in playtest log: one CSV line per job on the SD card. */
@@ -148,8 +150,14 @@ int nh_app_run(const NhPlatformArgs *args)
         plat_shutdown();
         return 3;
     }
+    loading_screen("tuning up...");
+    if (!audio_init())
+        fprintf(stderr, "audio: out of memory, continuing silently\n");
     load_game();
     apply_settings();
+    static const float k_safe_mix[NH_MUSIC_LAYERS] = { 1.0f, 0.8f, 0.0f, 0.0f };
+    audio_music(THEME_SAFEHOUSE);
+    audio_music_mix(k_safe_mix);
 
     /* Debug jobs (--job / debug_start.txt) skip the safehouse. */
     int jt, js, jsec;
@@ -170,6 +178,7 @@ int nh_app_run(const NhPlatformArgs *args)
             return 4;
         }
         s_mode = MODE_HEIST;
+        audio_music(THEME_HEIST);
     }
 
     NhFixedStep step;
@@ -199,6 +208,7 @@ int nh_app_run(const NhPlatformArgs *args)
             tick_in.pressed = pending_pressed;
             tick_in.released = pending_released;
             pending_pressed = pending_released = 0;
+            audio_tick(NH_TICK_DT);
             if (s_mode == MODE_HEIST) {
                 heist_tick(&s_heist, &tick_in, &s_settings);
             } else {
@@ -221,7 +231,6 @@ int nh_app_run(const NhPlatformArgs *args)
             fps_start = now;
         }
         if (s_mode == MODE_HEIST) {
-            s_camp.play_time += 0.0f;
             heist_render(&s_heist, nh_fixedstep_alpha(&step), &s_settings, fps);
         } else {
             hideout_render(&s_hideout, &s_camp, &s_save_settings);
@@ -238,6 +247,7 @@ int nh_app_run(const NhPlatformArgs *args)
             if (!heist_start(&s_heist, &gp, &s_camp, &s_offer, s_save_settings.difficulty, &s_level, &s_scratch))
                 break;
             s_mode = MODE_HEIST;
+            audio_music(THEME_HEIST);
             last = plat_time_us();
         } else if (s_mode == MODE_HEIST && s_heist.done) {
             /* Back home: book the job, save, show the payday. */
@@ -251,6 +261,8 @@ int nh_app_run(const NhPlatformArgs *args)
             heist_end(&s_heist);
             save_game();
             s_mode = MODE_HIDEOUT;
+            audio_music(THEME_SAFEHOUSE);
+            audio_music_mix(k_safe_mix);
             plat_rumble(false);
         } else if (s_mode == MODE_HEIST && s_heist.want_rebuild) {
             NhGenParams next = s_heist.job;

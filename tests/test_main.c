@@ -33,6 +33,7 @@ int nh_test_checks;
     X(test_save)               \
     X(test_board)              \
     X(test_economy)            \
+    X(test_synth)              \
     X(test_gen_solvable)
 
 #define X(name) void name(void);

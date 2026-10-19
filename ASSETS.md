@@ -10,7 +10,7 @@ for anything new **before** it lands in the repo.
 | 5x7 bitmap font | `tools/gen_font.py` → `src/core/nh_font5x7.c` | Original work for Night Heist | CC0 1.0 |
 | Homebrew Channel icon | `tools/gen_icon.py` → `apps/NightHeist/icon.png` | Original, generated procedurally | CC0 1.0 |
 | Brick and concrete test textures | `src/core/nh_texgen.c` (generated at runtime) | Original, procedural | CC0 1.0 |
-| Click sound | `src/game/demo_scene.c` (synthesised at runtime) | Original, procedural | CC0 1.0 |
+| All sound effects (70) and music (heist theme in 4 stems, safehouse theme in 2) | `src/core/nh_synth.c` (synthesised at boot; `make audiodump` writes them as WAV) | Original, procedural | CC0 1.0 |
 | Torus, floor and wall test meshes | `src/core/nh_meshgen.c` (generated at runtime) | Original, procedural | CC0 1.0 |
 | Props (62 models), guard and dog characters with animations | `tools/make_art.py` -> `assets/src/props`, `assets/src/chars` -> `data/mdl`, `data/anim` | Original, built procedurally from primitives | CC0 1.0 |
 | Procedural textures: glass, screen, plastic, paper, skin, gold, cash, cloth, paintings 0-5, exit sign, torch cookie, glow, blob shadow, dust, beam, white, glow panel | `tools/make_art.py` -> `assets/src/tex` | Original, procedural | CC0 1.0 |

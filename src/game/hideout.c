@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "audio.h"
 #include "platform/gfx.h"
 #include "text.h"
 
@@ -27,6 +28,8 @@ void hideout_payday(Hideout *ho, const NhPayday *pay, const char *title)
 {
     ho->pay = *pay;
     ho->show_pay = true;
+    if (pay->net > 0)
+        audio_play(SFX_CASH, 0.7f, 0.0f, 1.0f);
     snprintf(ho->pay_title, sizeof(ho->pay_title), "%s", title);
 }
 
@@ -104,7 +107,7 @@ static int crew_count(uint8_t bits)
     return n;
 }
 
-HideAction hideout_tick(Hideout *ho, NhCampaign *c, NhSaveSettings *s, const NhInput *in, int *job)
+static HideAction tick_menu(Hideout *ho, NhCampaign *c, NhSaveSettings *s, const NhInput *in, int *job)
 {
     ho->tick++;
     if (ho->msg_t > 0)
@@ -223,6 +226,27 @@ HideAction hideout_tick(Hideout *ho, NhCampaign *c, NhSaveSettings *s, const NhI
         adjust_setting(s, ho->sel, a ? 1 : -1);
         return HA_SAVE;
     }
+}
+
+/* The menu, plus its clicks: moves, selects, backs out, refusals and the till. */
+HideAction hideout_tick(Hideout *ho, NhCampaign *c, NhSaveSettings *s, const NhInput *in, int *job)
+{
+    int tab = ho->tab, sel = ho->sel, plan = ho->plan, msg_t = ho->msg_t;
+    bool pay = ho->show_pay;
+    int32_t money = c->money;
+    uint8_t crew = c->crew_selected;
+    HideAction ha = tick_menu(ho, c, s, in, job);
+    if (ha == HA_START_JOB || (pay && !ho->show_pay) || crew != c->crew_selected || (plan < 0 && ho->plan >= 0))
+        audio_play(SFX_UI_SELECT, 0.5f, 0.0f, 1.0f);
+    else if (ha == HA_SAVE)
+        audio_play(c->money < money ? SFX_CASH : SFX_UI_SELECT, 0.5f, 0.0f, 1.0f);
+    else if (plan >= 0 && ho->plan < 0)
+        audio_play(SFX_UI_BACK, 0.5f, 0.0f, 1.0f);
+    else if (ho->msg_t == 180 && msg_t != 180)
+        audio_play(SFX_UI_DENY, 0.5f, 0.0f, 1.0f);
+    else if (tab != ho->tab || sel != ho->sel)
+        audio_play(SFX_UI_MOVE, 0.35f, 0.0f, 1.0f);
+    return ha;
 }
 
 /* ---- rendering ----------------------------------------------------------------------- */

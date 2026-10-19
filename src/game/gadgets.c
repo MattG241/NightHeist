@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "audio.h"
 #include "core/nh_fixedstep.h"
 #include "core/nh_proptab.h"
 #include "res.h"
@@ -103,6 +104,7 @@ static bool cut_window(Heist *h)
     if (!e || e->type != LV_E_WINDOW || e->ref != LV_WIN_CLOSED || LV_CELL * 0.5f - dist > 1.4f)
         return false;
     e->ref = LV_WIN_CUT;
+    audio_play(SFX_GLASS_CUT, 0.6f, 0.0f, 1.0f);
     NhVec3 wp = nh_v3(ctr.x + (float)dx[best_s], lv_floor_y(p->floor) + 1.5f, ctr.z + (float)dz[best_s]);
     ai_add_anomaly(&h->ai, AN_GLASS_BROKEN, wp, 1000 + cx * 64 + cz);
     heist_noise(h, wp, 2.0f, NH_NOISE_GLASS);
@@ -121,6 +123,7 @@ static void throw_gadget(Heist *h, int g)
         NhVec3 d = aim(h);
         pr->pos = nh_v3_add(eye_pos(h), nh_v3_scale(d, 0.4f));
         pr->vel = nh_v3_add(nh_v3_scale(d, 11.0f), nh_v3(0, 2.2f, 0));
+        audio_play(SFX_THROW, 0.5f, 0.2f, 1.0f);
         return;
     }
 }
@@ -130,18 +133,22 @@ static void land(Heist *h, Projectile *pr)
     pr->landed = true;
     switch (pr->gadget) {
     case GD_COIN:
+        audio_at(SFX_COIN, pr->pos, 0.9f, 20.0f);
         ai_distraction(&h->ai, pr->pos, 8.0f, NH_NOISE_THROW);
         pr->t = 2.0f;
         break;
     case GD_NOISEMAKER:
+        audio_at(SFX_COIN, pr->pos, 0.6f, 20.0f);
         pr->t = 9.0f;
         break;
     case GD_SMOKE:
+        audio_at(SFX_SMOKE, pr->pos, 0.9f, 20.0f);
         ai_add_smoke(&h->ai, nh_v3_add(pr->pos, nh_v3(0, 1.0f, 0)), 2.6f, 16.0f);
         heist_noise(h, pr->pos, 4.0f, NH_NOISE_THROW);
         pr->t = 16.0f;
         break;
     case GD_EMP:
+        audio_at(SFX_EMP, pr->pos, 1.0f, 25.0f);
         sec_emp(&h->sec, pr->pos, 7.0f, 15.0f);
         heist_noise(h, pr->pos, 3.0f, NH_NOISE_GADGET);
         pr->t = 1.0f;
@@ -162,6 +169,8 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         for (int k = 1; k <= GD_COUNT; k++) {
             int g = (j->gadget + dir * k + GD_COUNT * 2) % GD_COUNT;
             if (j->charges[g] > 0) {
+                if (g != j->gadget)
+                    audio_play(SFX_UI_MOVE, 0.3f, 0.0f, 1.0f);
                 j->gadget = g;
                 break;
             }
@@ -241,6 +250,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         int t = aimed_guard(h, nh_gadgets[g].range, 0.85f, true);
         if (t >= 0) {
             ai_knockout(&h->ai, t);
+            audio_at(SFX_TASER, h->ai.g[t].pos, 0.9f, 15.0f);
             heist_noise(h, h->ai.g[t].pos, 5.0f, NH_NOISE_TAKEDOWN);
             used = true;
         }
@@ -250,6 +260,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         int t = aimed_guard(h, nh_gadgets[g].range, 0.985f, false);
         if (t >= 0) {
             ai_tranquilise(&h->ai, t, h->perks.dart_time);
+            audio_play(SFX_DART, 0.6f, 0.1f, 1.0f);
             used = true;
         }
         break;
@@ -258,6 +269,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         int c = aimed_camera(h, nh_gadgets[g].range);
         if (c >= 0) {
             h->sec.cam[c].jam_t = 20.0f;
+            audio_play(SFX_JAMMER, 0.5f, 0.0f, 1.0f);
             heist_status(h, "Camera jammed for 20 s");
             used = true;
         }
@@ -281,6 +293,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
                 j->keycards |= 1u << k;
             char buf[48];
             snprintf(buf, sizeof(buf), "Cloned keycards 1-%d", levels);
+            audio_play(SFX_SWIPE, 0.6f, 0.0f, 1.1f);
             heist_status(h, buf);
             used = true;
         }
@@ -301,6 +314,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
             float d = nh_v3_len(to);
             if (d < 3.5f && nh_v3_dot(nh_v3_scale(to, 1.0f / d), dir) > 0.8f) {
                 l->mirrored = 1;
+                audio_play(SFX_SAFE_SET, 0.5f, 0.0f, 1.4f);
                 heist_status(h, "Beam bent out of the way");
                 used = true;
             }
@@ -321,6 +335,9 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         int ph = aimed_entity(h, ENT_PHONE, nh_gadgets[g].range, 0.9f);
         if (ph >= 0) {
             ai_distraction(&h->ai, h->plan.ent[ph].pos, 12.0f, NH_NOISE_PHONE);
+            audio_play(SFX_KEYPAD_OK, 0.4f, 0.0f, 1.2f);
+            h->phone_t = 6.0f;
+            h->phone_pos = h->plan.ent[ph].pos;
             heist_status(h, "Ring ring...");
             used = true;
         }
@@ -333,6 +350,7 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         if (j->charges[g] != 255)
             j->charges[g]--;
     } else {
+        audio_play(SFX_UI_DENY, 0.5f, 0.0f, 1.0f);
         heist_status(h, "No target");
     }
     return true;

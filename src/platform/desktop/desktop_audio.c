@@ -11,7 +11,7 @@ typedef struct Voice {
     uint32_t count;
     double pos, step;
     float vl, vr;
-    bool active;
+    bool active, loop;
 } Voice;
 
 static SDL_AudioDeviceID s_dev;
@@ -31,10 +31,17 @@ static void mix(void *user, Uint8 *stream, int len)
         for (int i = 0; i < frames; i++) {
             uint32_t idx = (uint32_t)vc->pos;
             if (idx >= vc->count) {
-                vc->active = false;
-                break;
+                if (!vc->loop) {
+                    vc->active = false;
+                    break;
+                }
+                vc->pos -= (double)vc->count;
+                idx = (uint32_t)vc->pos;
             }
-            float s = (float)vc->data[idx] * (1.0f / 32768.0f);
+            /* Linear interpolation, like the DSP's resampler. */
+            uint32_t nxt = idx + 1 < vc->count ? idx + 1 : (vc->loop ? 0 : idx);
+            float fr = (float)(vc->pos - (double)idx);
+            float s = ((float)vc->data[idx] + ((float)vc->data[nxt] - (float)vc->data[idx]) * fr) * (1.0f / 32768.0f);
             out[i * 2] += s * vc->vl;
             out[i * 2 + 1] += s * vc->vr;
             vc->pos += vc->step;
@@ -67,26 +74,58 @@ void desktop_audio_shutdown(void)
     s_dev = 0;
 }
 
-int plat_audio_play(const NhSound *s, float volume, float pan)
+/* Same pan law and 8-bit volume steps as the ASND path. */
+static void levels(float volume, float pan, float *vl, float *vr)
 {
-    if (!s_dev)
-        return -1;
     volume = NH_CLAMP(volume, 0.0f, 1.0f);
     pan = NH_CLAMP(pan, -1.0f, 1.0f);
+    *vl = (float)(int)(255.0f * volume * NH_MIN(1.0f, 1.0f - pan)) / 255.0f;
+    *vr = (float)(int)(255.0f * volume * NH_MIN(1.0f, 1.0f + pan)) / 255.0f;
+}
+
+static int start(const NhSound *s, float volume, float pan, bool loop)
+{
+    if (!s_dev || !s || !s->count)
+        return -1;
     int voice = -1;
     SDL_LockAudioDevice(s_dev);
     for (int v = 0; v < NH_AUDIO_VOICES; v++) {
         if (!s_voices[v].active) {
-            /* Same pan law and 8-bit volume steps as the ASND path. */
-            float vl = (float)(int)(255.0f * volume * NH_MIN(1.0f, 1.0f - pan)) / 255.0f;
-            float vr = (float)(int)(255.0f * volume * NH_MIN(1.0f, 1.0f + pan)) / 255.0f;
-            s_voices[v] = (Voice){ s->samples, s->count, 0.0, (double)s->rate / s_rate, vl, vr, true };
+            Voice *vc = &s_voices[v];
+            *vc = (Voice){ s->samples, s->count, 0.0, (double)s->rate / s_rate, 0, 0, true, loop };
+            levels(volume, pan, &vc->vl, &vc->vr);
             voice = v;
             break;
         }
     }
     SDL_UnlockAudioDevice(s_dev);
     return voice;
+}
+
+int plat_audio_play(const NhSound *s, float volume, float pan) { return start(s, volume, pan, false); }
+
+int plat_audio_loop(const NhSound *s, float volume, float pan) { return start(s, volume, pan, true); }
+
+void plat_audio_set(int voice, float volume, float pan)
+{
+    if (!s_dev || voice < 0 || voice >= NH_AUDIO_VOICES)
+        return;
+    SDL_LockAudioDevice(s_dev);
+    levels(volume, pan, &s_voices[voice].vl, &s_voices[voice].vr);
+    SDL_UnlockAudioDevice(s_dev);
+}
+
+/* SDL's audio lock is recursive, so a group of calls can hold it throughout. */
+void plat_audio_begin(void)
+{
+    if (s_dev)
+        SDL_LockAudioDevice(s_dev);
+}
+
+void plat_audio_end(void)
+{
+    if (s_dev)
+        SDL_UnlockAudioDevice(s_dev);
 }
 
 void plat_audio_stop(int voice)

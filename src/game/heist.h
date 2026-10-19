@@ -120,6 +120,14 @@ typedef struct Heist {
     bool done;              /* summary confirmed: back to the safehouse */
     NhJobOffer offer;
     HeistPerks perks;
+    /* Audio: loop handles and what the sound update tracks between ticks */
+    int snd_alarm, snd_siren, snd_drill, snd_phone, snd_proj[8];
+    float phone_t;            /* a desk phone ringing (dialer gadget) */
+    NhVec3 phone_pos;
+    float guard_step[AI_MAX_GUARDS];
+    NhVec3 guard_prev[AI_MAX_GUARDS];
+    float cam_beep_t, entry_beep_t;
+    bool was_torch, was_thermal, subtitles, summary_audio;
 } Heist;
 
 /* Start a job: a generated building, or the hand-built test level if job is NULL. */
