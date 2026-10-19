@@ -20,6 +20,8 @@ SDL_Window *g_window;
 
 static bool s_quit;
 static bool s_has_start;
+static bool s_has_job;
+static int s_job[4];
 static float s_start[5];
 static uint32_t s_prev_held;
 static bool s_rumble;
@@ -28,6 +30,7 @@ static bool load_script(const char *path);
 static void usage(void)
 {
     puts("nightheist [--frames N] [--screenshot PATH] [--shot-every N] [--script FILE] [--wide] [--novsync]"
+         " [--job TYPE,SIZE,SEED[,SECURITY]] [--test-level]"
          " [--data DIR]");
 }
 
@@ -49,6 +52,12 @@ static bool parse_args(const NhPlatformArgs *args)
                                  &s_start[3], &s_start[4]) >= 4;
             s_start[3] = NH_DEG2RAD(s_start[3]);
             s_start[4] = NH_DEG2RAD(s_start[4]);
+        } else if (!strcmp(a, "--job") && has_next) {
+            s_job[3] = 2;
+            s_has_job = sscanf(args->argv[++i], "%d,%d,%d,%d", &s_job[0], &s_job[1], &s_job[2], &s_job[3]) >= 3;
+        } else if (!strcmp(a, "--test-level")) {
+            s_has_job = true;
+            s_job[0] = -1;
         } else if (!strcmp(a, "--shot-every") && has_next)
             g_desktop_opts.shot_every = atoi(args->argv[++i]);
         else if (!strcmp(a, "--wide"))
@@ -100,6 +109,17 @@ void plat_request_quit(void)
 const char *plat_name(void)
 {
     return "Desktop";
+}
+
+bool plat_debug_job(int *type, int *size, unsigned *seed, int *security)
+{
+    if (!s_has_job)
+        return false;
+    *type = s_job[0];
+    *size = s_job[1];
+    *seed = (unsigned)s_job[2];
+    *security = s_job[3];
+    return true;
 }
 
 bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)

@@ -4,6 +4,7 @@
 #include <ogc/lwp_watchdog.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wiiuse/wpad.h>
 
 #include "game/app.h"
@@ -69,16 +70,35 @@ const char *plat_name(void)
     return "Wii";
 }
 
-/* Testing aid: data/../debug_start.txt holding "x,y,z,yaw,pitch" (degrees)
- * puts the player there, like the desktop --start option. */
-bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
+/* Testing aid: debug_start.txt next to boot.dol. A line "x,y,z,yaw,pitch"
+ * (degrees) puts the player there, like the desktop --start option; a line
+ * "job TYPE,SIZE,SEED,SECURITY" picks the building (TYPE -1: test level). */
+static bool read_debug_file(char *buf, int cap)
 {
-    char path[160], buf[96];
+    char path[160];
     snprintf(path, sizeof(path), "%s/debug_start.txt", plat_data_dir());
-    long n = plat_file_read(path, buf, sizeof(buf) - 1);
+    long n = plat_file_read(path, buf, (size_t)cap - 1);
     if (n <= 0)
         return false;
     buf[n] = 0;
+    return true;
+}
+
+bool plat_debug_job(int *type, int *size, unsigned *seed, int *security)
+{
+    char buf[160];
+    if (!read_debug_file(buf, sizeof(buf)))
+        return false;
+    const char *j = strstr(buf, "job ");
+    *security = 2;
+    return j && sscanf(j + 4, "%d,%d,%u,%d", type, size, seed, security) >= 3;
+}
+
+bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
+{
+    char buf[160];
+    if (!read_debug_file(buf, sizeof(buf)) || !strncmp(buf, "job ", 4))
+        return false;
     float yd = 0, pd = 0;
     if (sscanf(buf, "%f,%f,%f,%f,%f", x, y, z, &yd, &pd) < 4)
         return false;

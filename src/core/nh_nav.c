@@ -57,17 +57,26 @@ void nh_nav_build(NhNav *nav, const Level *L, float r)
                 if (c->room == LV_ROOM_OUTSIDE)
                     fl |= NAV_OUTSIDE;
                 float wx = ((float)x + 0.5f) * (LV_CELL / NAV_RES), wz = ((float)z + 0.5f) * (LV_CELL / NAV_RES);
-                for (int i = 0; i < L->nprops; i++) {
-                    const LvProp *p = &L->props[i];
-                    if (p->floor != f || !(p->flags & LV_P_SOLID) || (p->flags & LV_P_HIDDEN))
-                        continue;
-                    if (p->y > lv_floor_y(f) + 1.5f)
-                        continue; /* wall-mounted */
-                    if (prop_blocks(p, wx, wz, r)) {
-                        fl = 0;
-                        break;
+                /* Props indexed in this cell and its neighbours (the agent
+                 * radius reaches across cell borders). */
+                int cx = x / NAV_RES, cz = z / NAV_RES;
+                for (int dz = -1; dz <= 1 && fl; dz++)
+                    for (int dx = -1; dx <= 1 && fl; dx++) {
+                        if (!lv_in_bounds(L, f, cx + dx, cz + dz))
+                            continue;
+                        const uint16_t *slots = L->cell_props[f][cz + dz][cx + dx];
+                        for (int k = 0; k < LV_CELL_PROPS && slots[k]; k++) {
+                            const LvProp *p = &L->props[slots[k] - 1];
+                            if (!(p->flags & LV_P_SOLID) || (p->flags & LV_P_HIDDEN))
+                                continue;
+                            if (p->y > lv_floor_y(f) + 1.5f)
+                                continue; /* wall-mounted */
+                            if (prop_blocks(p, wx, wz, r)) {
+                                fl = 0;
+                                break;
+                            }
+                        }
                     }
-                }
                 nav->flags[f][z][x] = fl;
             }
         }

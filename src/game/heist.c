@@ -37,23 +37,57 @@ static const char *const k_barks[BARK_COUNT] = {
 static void spawn_guards(Heist *h)
 {
     ai_init(&h->ai, &h->world.L, h->nav, h->world.L.seed ^ 0x6A4Du);
-    testlevel_guards(&h->ai);
+    if (!h->generated) {
+        testlevel_guards(&h->ai);
+    } else {
+        int map[GEN_GUARD_MAX];
+        for (int i = 0; i < h->plan.nguards; i++) {
+            const NhGuardPlan *g = &h->plan.guards[i];
+            map[i] = ai_add_guard(&h->ai, g->arch, g->pos, g->yaw, g->route, g->nroute);
+        }
+        for (int i = 0; i < h->plan.nguards; i++) {
+            int p = h->plan.guards[i].partner;
+            if (map[i] >= 0 && p >= 0 && map[p] >= 0) {
+                h->ai.g[map[i]].partner = (int8_t)map[p];
+                if (h->plan.guards[i].arch == ARCH_DOG)
+                    h->ai.g[map[i]].state = AS_PATROL;
+            }
+        }
+    }
     guards_vis_init(&h->gv, &h->ai);
     h->takedown = -1;
 }
 
-bool heist_start_test(Heist *h, NhArena *level_arena, NhArena *scratch)
+static NhVec3 start_pos(const Heist *h, float *yaw)
+{
+    if (!h->generated)
+        return testlevel_start(yaw);
+    *yaw = h->plan.entry_yaw[0];
+    return h->plan.entry[0];
+}
+
+bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena *scratch)
 {
     memset(h, 0, sizeof(*h));
-    testlevel_build(&h->world.L);
-    /* Convenience for Phase 1/2 testing: a couple of doors start open. */
-    h->world.L.doors[0].open = h->world.L.doors[0].target = 1.0f;
-    h->world.L.doors[0].locked = 0;
-    h->world.L.doors[1].open = h->world.L.doors[1].target = 1.0f;
+    if (job) {
+        h->generated = true;
+        h->job = *job;
+        if (!nh_gen_building(&h->world.L, job, &h->plan))
+            return false;
+        snprintf(h->job_name, sizeof(h->job_name), "%s %s #%u", nh_size_names[job->size],
+                 nh_building_names[job->type], (unsigned)job->seed);
+    } else {
+        testlevel_build(&h->world.L);
+        /* Convenience for testing: a couple of doors start open. */
+        h->world.L.doors[0].open = h->world.L.doors[0].target = 1.0f;
+        h->world.L.doors[0].locked = 0;
+        h->world.L.doors[1].open = h->world.L.doors[1].target = 1.0f;
+        snprintf(h->job_name, sizeof(h->job_name), "test building");
+    }
     if (!world_build(&h->world, level_arena, scratch))
         return false;
     float yaw;
-    NhVec3 start = testlevel_start(&yaw);
+    NhVec3 start = start_pos(h, &yaw);
     nh_player_init(&h->player, start, yaw);
     float dx, dy, dz, dyaw, dpitch = 0.0f;
     if (plat_debug_start(&dx, &dy, &dz, &dyaw, &dpitch)) {
@@ -156,7 +190,7 @@ static void subtitle(Heist *h, const char *msg)
 static void reset_after_caught(Heist *h)
 {
     float yaw;
-    NhVec3 start = testlevel_start(&yaw);
+    NhVec3 start = start_pos(h, &yaw);
     nh_player_init(&h->player, start, yaw);
     h->torch_dir = nh_dir_from_yaw_pitch(yaw, 0);
     spawn_guards(h);
@@ -304,6 +338,19 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
         gs->show_debug = !gs->show_debug;
     if (in->pressed & NH_BTN_2)
         h->debug_view = (h->debug_view + 1) % 3;
+    /* Debug: + new seed, - next building type (while the overlay is up). */
+    if (gs->show_debug && (in->pressed & (NH_BTN_PLUS | NH_BTN_MINUS))) {
+        if (!h->generated) {
+            h->job.type = BT_OFFICE;
+            h->job.size = BS_MEDIUM;
+            h->job.security = 2;
+        }
+        if (in->pressed & NH_BTN_PLUS)
+            h->job.seed = h->job.seed * 1103515245u + 12345u;
+        else
+            h->job.type = (uint8_t)((h->job.type + 1) % BT_COUNT);
+        h->want_rebuild = true;
+    }
 
 
     if (in->pressed & NH_BTN_C) {
@@ -312,8 +359,12 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
             try_vent(h);
         else if (d >= 0) {
             LvDoor *door = &w->L.doors[d];
+            static const char *const k_lock[] = { "", "Locked (pick)", "Keycard required", "Keypad",
+                                                  "Maglock: needs the power cut", "Vault" };
+            if (door->locked && gs->show_debug)
+                door->locked = 0; /* debug: walk through anything */
             if (door->locked)
-                status(h, "Locked");
+                status(h, door->lock < 6 ? k_lock[door->lock] : "Locked");
             else {
                 door->target = door->target > 0.5f ? 0.0f : 1.0f;
                 NhVec3 c = lv_cell_center(door->floor, door->x, door->z);

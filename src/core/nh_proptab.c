@@ -66,6 +66,8 @@ const NhPropInfo nh_prop_info[PROP_COUNT] = {
     { "door_shutter", { 0.500f, 1.100f, 0.040f }, 0 },
     { "ladder", { 0.250f, 2.000f, 0.075f }, 8 },
     { "phone", { 0.060f, 0.010f, 0.030f }, 8 },
+    { "keycard", { 0.045f, 0.005f, 0.030f }, 8 },
+    { "code_note", { 0.040f, 0.005f, 0.040f }, 8 },
 };
 
 int nh_prop_find(const char *name)

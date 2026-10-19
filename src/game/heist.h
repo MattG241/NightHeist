@@ -4,6 +4,7 @@
 #define NH_HEIST_H
 
 #include "core/nh_ai.h"
+#include "core/nh_gen.h"
 #include "core/nh_nav.h"
 #include "core/nh_player.h"
 #include "guards.h"
@@ -43,9 +44,16 @@ typedef struct Heist {
     int rumble_ticks;
     float heartbeat_t;
     float alpha;            /* render interpolation, for the opaque hook */
+    /* The job */
+    bool generated;
+    NhGenParams job;
+    NhPlan plan;
+    char job_name[64];
+    bool want_rebuild;      /* debug: regenerate with `job` at the next frame */
 } Heist;
 
-bool heist_start_test(Heist *h, NhArena *level_arena, NhArena *scratch);
+/* Start a job: a generated building, or the hand-built test level if job is NULL. */
+bool heist_start(Heist *h, const NhGenParams *job, NhArena *level_arena, NhArena *scratch);
 void heist_end(Heist *h);
 void heist_tick(Heist *h, const NhInput *in, GameSettings *gs);
 void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps);

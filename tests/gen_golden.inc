@@ -1,0 +1,17 @@
+/* seed, type, size, fingerprint (security 2). Regenerate only on purpose:
+ * the same values must come out on the Wii (shown in the debug overlay). */
+{ 42u, 0, 0, 0xE7B39176u },
+{ 43u, 0, 1, 0xF1773EC4u },
+{ 44u, 0, 2, 0x572FD78Cu },
+{ 142u, 1, 0, 0x65A6EDB8u },
+{ 143u, 1, 1, 0x1978063Eu },
+{ 144u, 1, 2, 0x04BF0F1Du },
+{ 242u, 2, 0, 0xEC958A3Fu },
+{ 243u, 2, 1, 0x648984BCu },
+{ 244u, 2, 2, 0x2619D478u },
+{ 342u, 3, 0, 0xE6BF6482u },
+{ 343u, 3, 1, 0x1B49A183u },
+{ 344u, 3, 2, 0xD71E6660u },
+{ 442u, 4, 0, 0x139F3325u },
+{ 443u, 4, 1, 0xB1D5DC6Eu },
+{ 444u, 4, 2, 0x7895ED65u },

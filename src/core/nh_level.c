@@ -254,8 +254,14 @@ int lv_add_prop(Level *L, int type, int f, float x, float y, float z, float yaw,
 void lv_index_props(Level *L)
 {
     memset(L->cell_props, 0, sizeof(L->cell_props));
+    /* Solid and view-blocking props first so small items never crowd them
+     * out of a full cell. */
+    for (int pass = 0; pass < 2; pass++)
     for (int i = 0; i < L->nprops; i++) {
         const LvProp *p = &L->props[i];
+        bool hard = (p->flags & (LV_P_SOLID | LV_P_OCCLUDER)) != 0;
+        if (hard != (pass == 0))
+            continue;
         float r = sqrtf(p->half.x * p->half.x + p->half.z * p->half.z);
         int x0 = lv_cell_of(p->x - r), x1 = lv_cell_of(p->x + r);
         int z0 = lv_cell_of(p->z - r), z1 = lv_cell_of(p->z + r);

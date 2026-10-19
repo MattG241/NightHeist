@@ -168,13 +168,13 @@ void hud_draw_debug(const Heist *h, float fps)
                 ar[2] / 1048576.0f, ar[3] / 1048576.0f, ar[4] / 1048576.0f, ar[5] / 1048576.0f,
                 mem.mem2_free / 1048576.0f);
     y += lh;
-    text_printf(x, y, 2, FG, "seed %08X  build %u ms", (unsigned)w->L.seed, (unsigned)w->build_ms);
+    text_printf(x, y, 2, FG, "%s fp %08X %ums", h->job_name, (unsigned)h->plan.fingerprint, (unsigned)w->build_ms);
     y += lh;
     text_printf(x, y, 2, FG, "pos %.1f %.1f %.1f  f%d", p->pos.x, p->pos.y, p->pos.z, p->floor);
     y += lh;
     text_printf(x, y, 2, FG, "%s #%d  light %.2f", rname, room, h->light_level);
     y += lh;
-    text_printf(x, y, 2, DIM, "1 debug  2 view  B torch  C door");
+    text_printf(x, y, 2, DIM, "1 dbg 2 view +seed -type C door");
     y += lh + 6;
     const AiWorld *ai = &h->ai;
     text_rect(4, y - 4, 420, (float)ai->n * 11 + 22, nh_rgba(0, 0, 0, 160));

@@ -68,8 +68,24 @@ int nh_app_run(const NhPlatformArgs *args)
     s_settings.subtitles = true;
     s_settings.music_volume = s_settings.sfx_volume = 0.8f;
 
-    loading_screen("building the test building...");
-    if (!heist_start_test(&s_heist, &s_level, &s_scratch)) {
+    NhGenParams job;
+    memset(&job, 0, sizeof(job));
+    job.type = BT_OFFICE;
+    job.size = BS_MEDIUM;
+    job.security = 2;
+    job.seed = (uint32_t)(plat_time_us() & 0x7FFFFFFFu);
+    int jt, js, jsec;
+    unsigned jseed;
+    bool use_test = false;
+    if (plat_debug_job(&jt, &js, &jseed, &jsec)) {
+        use_test = jt < 0;
+        job.type = (uint8_t)NH_CLAMP(jt, 0, BT_COUNT - 1);
+        job.size = (uint8_t)NH_CLAMP(js, 0, BS_COUNT - 1);
+        job.seed = jseed;
+        job.security = (uint8_t)NH_CLAMP(jsec, 0, 4);
+    }
+    loading_screen(use_test ? "building the test building..." : "casing the job...");
+    if (!heist_start(&s_heist, use_test ? NULL : &job, &s_level, &s_scratch)) {
         fprintf(stderr, "failed to build the level\n");
         plat_shutdown();
         return 4;
@@ -111,6 +127,16 @@ int nh_app_run(const NhPlatformArgs *args)
             fps_start = now;
         }
         heist_render(&s_heist, nh_fixedstep_alpha(&step), &s_settings, fps);
+        if (s_heist.want_rebuild) {
+            NhGenParams next = s_heist.job;
+            heist_end(&s_heist);
+            nh_arena_reset(&s_level);
+            nh_arena_reset(&s_scratch);
+            loading_screen("casing the job...");
+            if (!heist_start(&s_heist, &next, &s_level, &s_scratch))
+                break;
+            last = plat_time_us();
+        }
     }
 
     heist_end(&s_heist);

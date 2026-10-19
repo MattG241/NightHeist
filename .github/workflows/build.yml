@@ -20,7 +20,9 @@ jobs:
           mkdir -p build/asan
           cc -std=c11 -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc \
             src/core/*.c src/game/testlevel.c tests/*.c -lm -o build/asan/tests
-          ./build/asan/tests
+          NH_GEN_SEEDS=1000 ./build/asan/tests
+      - name: Seed map tool
+        run: make seedmap && ./build/seedmap bank large 7 2 bank.png
 
   wii:
     runs-on: ubuntu-24.04

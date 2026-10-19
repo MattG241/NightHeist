@@ -23,7 +23,11 @@ int nh_test_checks;
     X(test_assets)             \
     X(test_nav)                \
     X(test_detection)          \
-    X(test_ai)
+    X(test_ai)                 \
+    X(test_gen_determinism)    \
+    X(test_gen_distinct)       \
+    X(test_gen_nav)            \
+    X(test_gen_solvable)
 
 #define X(name) void name(void);
 TESTS(X)

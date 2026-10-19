@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: 3, Guards (complete); next is 4, the procedural generator
+## Current phase: 4, Procedural generator (complete); next is 5–6, interactables and heist flow
 
 | Phase | Status |
 |---|---|
@@ -8,8 +8,8 @@
 | 1. Asset pipeline, level model, FP controller, collision, renderer v2 | Done |
 | 2. Lighting: bake, projected torch, portals, transparency, frame pipelining | Done |
 | 3. Guards: nav, AI, skinned characters, guard torches, detection HUD | Done |
-| 4. Procedural generator (5 types × 3 sizes, 40+ set pieces, 10k-seed test) | Next |
-| 5–6. Interactables, gadgets, minigames, objectives, alarm/police, extraction | Pending |
+| 4. Procedural generator (5 types × 3 sizes, 44 set pieces, 10k-seed test) | Done |
+| 5–6. Interactables, gadgets, minigames, objectives, alarm/police, extraction | Next |
 | 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Pending |
 | 9–10. Audio and music, UI and title, settings, performance audit, release | Pending |
 
@@ -108,16 +108,28 @@ and quantise to 8 bits like GX.
 4. Real-hardware unknowns: fill rate with two projected cookies in large
    rooms, libfat init time, rumble feel.
 
-## Next: Phase 4, procedural generator
+## Phase 4 results
 
-- An integer-only generator, so the same seed gives the same building on Wii
-  and desktop:
-  - 5 building types in 3 size tiers;
-  - a room graph on the 2 m grid, multiple floors, stairs, vents, roofs;
-  - at least 40 set-piece templates;
-  - furniture dressing;
-  - lights on circuits.
-- Lock-and-key placement validated by search, with regeneration on failure.
-- Guard rosters and patrol routes generated per building.
-- Tests: solvability over 10,000 seeds, layout distinctness, and a
-  top-down seed-map renderer.
+| Check | Result |
+|---|---|
+| Solvability, 10,000 seeds (all types, sizes and security levels) | 10,000/10,000 valid, 0 needed a retry; 28 rooms on average; about 1.3 ms each on desktop |
+| Set pieces | 44 defined; all 44 appear across the 10k run |
+| Determinism | Identical level, entities and guards on repeat runs; 15 golden fingerprints; Wii (Dolphin) matches desktop (`D667D5CA`) |
+| Distinctness | 30 seeds per type and size: no duplicate fingerprints, no pair closer than 0.1 Jaccard on interior walls, mean distance above 0.3 |
+| Anti-staleness | Avoided fingerprints never return; avoiding recent set pieces replaces most of them |
+| Nav reach | 45 buildings: every room reachable from the street on the guards' nav grid, every guard spawn walkable |
+| Wii | Generated office (3 storeys, 33 rooms): 59.9 fps, level arena 3.9/12 MB, geometry 4.4 MB, generation + build + bake 4.9 s emulated |
+
+Dressing check across 1,500 buildings: no room ends up bare. About 20% of
+open offices and 45% of archives need a second try at their furniture.
+
+## Next: Phase 5–6, interactables and heist flow
+
+- Interactions: lockpicking, keycards, keypads (codes from notes), fuse
+  boxes, safes, terminals, hiding in lockers, wardrobes and under desks, body
+  dragging, picking up loot (heavy loot slows you), windows (glass cutter),
+  vents, ladder and hatch.
+- Gadgets (at least 14), minigames (lockpick, safecrack, hack), cameras that
+  see you, lasers, alarm panels, the security room console.
+- Objectives, the alarm and police response, extraction, failure, and the
+  summary with a rating.

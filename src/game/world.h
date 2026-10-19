@@ -9,7 +9,7 @@
 #include "core/nh_rooms.h"
 #include "platform/gfx.h"
 
-#define WORLD_BATCHES_MAX 1400
+#define WORLD_BATCHES_MAX 2400
 
 typedef struct WorldBatch {
     uint8_t room, layer;

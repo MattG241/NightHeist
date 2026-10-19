@@ -610,6 +610,21 @@ def _(g):
     g.box("plastic", (-0.06, 0, -0.03), (0.06, 0.02, 0.03), BLACK)
 
 
+@prop("keycard", (0.09, 0.01, 0.06), INTER)
+def _(g):
+    g.box("plastic", (-0.045, 0, -0.03), (0.045, 0.004, 0.03), col(235, 235, 240))
+    g.box("plastic", (-0.045, 0.004, -0.012), (0.045, 0.006, 0.004), col(40, 90, 200))
+    g.box("metal", (-0.035, 0.004, 0.01), (-0.02, 0.006, 0.022), col(210, 180, 80))
+
+
+@prop("code_note", (0.08, 0.01, 0.08), INTER)
+def _(g):
+    g.box("paper", (-0.04, 0, -0.04), (0.04, 0.003, 0.04), col(250, 225, 90))
+    for k in range(3):
+        z = -0.022 + k * 0.016
+        g.box("paper", (-0.028, 0.003, z), (0.02 - k * 0.008, 0.004, z + 0.005), col(40, 40, 60))
+
+
 def build_props():
     os.makedirs(os.path.join(SRC, "props"), exist_ok=True)
     for name, size, flags, fn in PROPS:

@@ -35,9 +35,9 @@
 #define LV_ROOMS_MAX 220
 #define LV_DOORS_MAX 250
 #define LV_STAIRS_MAX 16
-#define LV_PROPS_MAX 1200
-#define LV_LIGHTS_MAX 240
-#define LV_CELL_PROPS 6     /* props indexed per cell for collision/LOS */
+#define LV_PROPS_MAX 2000
+#define LV_LIGHTS_MAX 320
+#define LV_CELL_PROPS 10    /* props indexed per cell for collision/LOS */
 
 enum {
     LV_ROOM_VOID = 0,

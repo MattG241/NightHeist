@@ -94,6 +94,8 @@ void plat_audio_stop(int voice);
 
 /* Desktop-only override of the player's start (for screenshots/tests). */
 bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch);
+/* Testing aid: which job to generate (type -1 = the hand-built test level). */
+bool plat_debug_job(int *type, int *size, unsigned *seed, int *security);
 
 /* ---- memory stats (debug overlay) --------------------------------------- */
 

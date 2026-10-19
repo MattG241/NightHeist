@@ -306,3 +306,106 @@ INVESTIGATE (walk over) and 1.0 ALERT (chase, radio after 1.5 s).
   - "ALARM" and "CAUGHT" screens.
   - A heartbeat rumble that speeds up from 0.45 suspicion upwards.
 
+
+## 10. Procedural buildings (Phase 4)
+
+Code: `src/core/nh_gen.c` (layout), `nh_gen_dress.c` (furniture and set
+pieces), `nh_gen_sec.c` (security, loot, guards).
+`nh_gen_building(Level*, NhGenParams*, NhPlan*)` fills the level and a
+**plan** for the heist:
+- the entities: loot and the objective, keycards, code notes, keypads,
+  cameras, lasers, alarm panels, fuse boxes, consoles, safes, terminals,
+  phones, the ladder and the hatch;
+- guard rosters with patrol routes;
+- the entry points and the extraction point.
+
+**Determinism.** Every decision is integer maths on PCG32, and floats only
+appear as outputs. The same seed gives the same building on Wii and desktop:
+office medium #7 gives fingerprint `D667D5CA` in Dolphin and on desktop.
+`tests/gen_golden.inc` pins 15 layouts.
+
+**Footprint.** Five types in three sizes, with ±2 cells of variation:
+
+| Type | Storeys (S/M/L) | Plan |
+|---|---|---|
+| Warehouse | 1/1/2 | Racking hall. An office block on the left, right or along the front. Loading bays (1–3, 2–4 cells deep). An optional row of cages and an optional hall partition. |
+| Office | 2/3/4 | Corridor spine with strips of rooms either side; a cross corridor in large buildings. |
+| Bank | 2/2/3 | Spine with deep back strips, so vaults sit behind antechambers. |
+| Mansion | 2/2/3 | A grand hall from the front door to the stairs; rooms from a BSP split, joined to the hall and to each other. |
+| Museum | 1/2/2 | Spine of galleries, with neighbouring galleries joined by arches. |
+
+**Stairs.** The stairwell is 3 cells wide. Even floors climb in the left
+column, odd floors climb back in the right column, and the centre column is
+a walkway that stays connected on every floor. A 2-wide switchback would
+strand one end of the room on alternate floors, because each flight climbs a
+whole storey.
+
+**Functions.** Each type has a list of needs: function, floor, size range,
+front/back/exterior preference, count per size, and the security level it
+wants. The rest of the rooms get filler functions.
+
+**Set pieces.** There are 44 hand-designed layouts (`k_setpieces`), for
+example:
+- gold vault with lasers;
+- server farm with a hackable terminal;
+- the diamond on a pedestal inside a laser cage;
+- master bedroom with a safe;
+- bonded cage;
+- security hub with consoles.
+
+Secure rooms get one first. Ordinary rooms get one 70% of the time, and a
+piece is not repeated in a building unless it is marked as repeatable.
+`avoid_setpieces` (the campaign's recent history) is preferred against, and
+ordinary rooms fall back to plain furniture rather than repeating a stale
+piece.
+
+**Furniture.**
+- Props snap to a 0.5 m occupancy grid. Doorways (1.2 × 1.25 m), stairs,
+  vent grates and the hatch are kept clear, and tall furniture never covers
+  a window.
+- After a room is dressed, its 1 m nav nodes are checked with the same
+  blocking test the guards' nav grid uses. Every doorway, arch and grate must
+  connect, and at most 2 free nodes may be cut off.
+- If the check fails, the room is rolled back and re-dressed: a second try,
+  then default furniture, then a light dressing.
+
+**Security.**
+- *Exterior doors* take a lockpick; they are harder at higher security and
+  alarmed from security 2.
+- *Secure rooms* get keycard, code, maglock (cut the security fuse) or vault
+  (card plus code) locks. Arches into them become doors so a lock can't be
+  walked around.
+- *Keys are placed constructively.* Locks are processed shallowest first.
+  Each key goes in a room reachable with that lock still closed and only the
+  keys placed so far, preferring desks in offices, security rooms and locker
+  rooms. So every building is solvable by construction.
+- *Cameras* go in the corners of corridors, lobbies and secure rooms.
+- *Fuse boxes:* one per floor for the lights, plus the security circuit.
+- *Alarm panel* by the front door.
+- *Vents:* straight ducts lead from an ordinary room into a secure one.
+
+**Validation.** `nh_gen_validate` is an independent fixpoint search over
+rooms. It starts outside and crosses doors, arches, stairs and vents using
+the keys collected so far. It requires every room, the objective and an
+extraction point to be reachable; on failure the generator retries with the
+next attempt. `avoid_layouts` (recent fingerprints) are never returned.
+
+**Guards.**
+- *Rosters* are per type: dog handlers at warehouses and mansions, camera
+  operators at banks, offices and museums, janitors in offices and museums,
+  elites at high security.
+- *Count:* 3, 5 or 7 by size, plus security/2, plus extras, up to 14.
+- *Stations:* camera operators sit at the console. Veterans may be posted
+  outside the objective's door. Handlers walk the perimeter with the dog.
+- *Patrols* are loops through 3–6 rooms of one floor, always through its
+  corridor, with actions by room (coffee in break rooms, a smoke outside).
+  Lazy guards get a nap.
+
+**Tools.**
+- `make seedmap` builds `build/seedmap`. It renders a building, or a sheet of
+  seeds, as a top-down PNG showing rooms, locks by colour, keys, loot, the
+  objective, cameras, lasers, vents and patrol loops.
+- In game, with the debug overlay on (1), + regenerates with a new seed and
+  − cycles the building type.
+- Desktop `--job TYPE,SIZE,SEED[,SEC]` or `--test-level` picks the job; on
+  Wii, a `job ...` line in `debug_start.txt` does the same.

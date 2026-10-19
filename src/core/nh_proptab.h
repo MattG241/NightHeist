@@ -67,7 +67,9 @@ typedef enum NhPropType {
     PROP_DOOR_SHUTTER = 59,
     PROP_LADDER = 60,
     PROP_PHONE = 61,
-    PROP_COUNT = 62
+    PROP_KEYCARD = 62,
+    PROP_CODE_NOTE = 63,
+    PROP_COUNT = 64
 } NhPropType;
 
 typedef struct NhPropInfo {

@@ -48,6 +48,8 @@ const NhRoomStyle nh_room_styles[RF_COUNT] = {
     [RF_ARCHIVE] = S("archive", MAT_LINOLEUM, MAT_PLASTER, MAT_CEILING, LV_SURF_TILE, 10),
     [RF_LOUNGE] = S("lounge", MAT_CARPET, MAT_PANEL, MAT_STUCCO, LV_SURF_CARPET, 40),
     [RF_SAFEHOUSE] = S("safehouse", MAT_PLANKS, MAT_BRICK, MAT_CONCRETE, LV_SURF_WOOD, 100),
+    [RF_SHOP] = S("gift shop", MAT_PARQUET, MAT_PLASTER_BEIGE, MAT_CEILING, LV_SURF_WOOD, 30),
+    [RF_LAB] = S("restoration lab", MAT_LINOLEUM, MAT_PLASTER, MAT_CEILING, LV_SURF_TILE, 25),
 };
 
 void nh_room_apply_style(Level *L, int room, int func)

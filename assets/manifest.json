@@ -30,6 +30,9 @@
   "ceiling_lamp": {
    "src": "src/props/ceiling_lamp.gltf"
   },
+  "code_note": {
+   "src": "src/props/code_note.gltf"
+  },
   "coffee_machine": {
    "src": "src/props/coffee_machine.gltf"
   },
@@ -100,6 +103,9 @@
   },
   "jewelry_box": {
    "src": "src/props/jewelry_box.gltf"
+  },
+  "keycard": {
+   "src": "src/props/keycard.gltf"
   },
   "keypad": {
    "src": "src/props/keypad.gltf"
