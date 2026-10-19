@@ -51,8 +51,19 @@ design, [PACING.md](PACING.md) for the campaign curve and
 2. Unzip it to the root of an SD card or USB drive. You should end up with
    `SD:/apps/NightHeist/boot.dol`, `meta.xml`, `icon.png` and `data/`.
 3. Launch **Night Heist** from the Homebrew Channel.
-4. Connect a Nunchuk. The game saves to `SD:/apps/NightHeist/save.dat`, and
+4. Connect a Nunchuk. The game saves next to `boot.dol`, in `save.dat`, and
    keeps the previous good save as `save.bak`.
+
+**USB drives.**
+- Format the drive FAT32 with an MBR partition table. The Wii's FAT
+  driver can't read exFAT or NTFS, and most new sticks ship as exFAT.
+- Copy the `apps` folder to the root of the drive, then plug the drive into
+  the back USB port nearest the edge (port 0).
+- The Homebrew Channel lists apps from SD and USB. Night Heist runs from
+  whichever one it was launched from, and keeps its saves there.
+- A slow drive gets a few seconds to spin up.
+- Saves are flushed to the device as they're written, so switching off at
+  the wall won't lose them.
 
 **Dolphin:**
 
