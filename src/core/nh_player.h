@@ -11,9 +11,8 @@
 #include "nh_level.h"
 
 /* Control schemes.
- * SIMPLE: the Nunchuk stick walks (up/down) and turns (left/right); the
- *   pointer only aims the torch and looks up or down near the top and
- *   bottom of the screen.
+ * SIMPLE: the Nunchuk stick walks (up/down) and turns (left/right); you
+ *   aim where you face and the view stays level (no pointer needed).
  * POINTER: the stick walks and strafes; pointing past the edges of a box
  *   in the middle of the screen turns (classic Wii shooter). */
 enum { NH_CONTROLS_SIMPLE, NH_CONTROLS_POINTER, NH_CONTROLS_COUNT };

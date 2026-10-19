@@ -87,7 +87,7 @@ Two control schemes, set in the safehouse under SETTINGS → Controls:
 |---|---|---|
 | Nunchuk stick up/down | W / S | Walk forward and back |
 | Nunchuk stick left/right | A / D | **Simple:** turn smoothly. **Pointer:** step sideways |
-| Pointer | Mouse | Aim the torch and pick what C uses. Look up or down at the top or bottom edge (**Pointer:** turn at the side edges) |
+| Pointer | Mouse | **Simple:** not needed; you aim where you face. **Pointer:** aim, and turn or look at the screen edges |
 | Z | Ctrl | Sneak: quieter, harder to see |
 | D-pad down (hold) | ↓ | Run. It's loud, and only happens when you ask for it |
 | C | F | Use, open, take (hold for timed actions) |
@@ -96,7 +96,8 @@ Two control schemes, set in the safehouse under SETTINGS → Controls:
 | D-pad left / right | ← / → | Choose a gadget |
 | D-pad up | ↑ | Thermal goggles |
 | + / − | Enter / Tab | Map / objectives |
-| Twist the remote | [ and ] (\ levels it) | Lockpick and safe dial |
+| Stick left/right (Simple) or twist the remote (Pointer) | A / D, or [ and ] | Lockpick and safe dial. In **Simple** the stick also steers the hacking signal |
+| Mash A when grabbed | Left mouse | Break free from a guard's grip (2 escapes per job on normal) |
 | HOME | Esc | Pause on a job; back to the title from the safehouse |
 
 How a job goes:
@@ -110,6 +111,10 @@ How a job goes:
   "TURN AROUND") points the way.
 - The first time each new thing comes up, a **tip** explains it: guards,
   locks, cameras, light, hiding.
+- If a guard grabs you, **mash A** to break free. You get 3 escapes on easy,
+  2 on normal and 1 on hard; after that, a grab means you're caught.
+- Too dark? Turn up **SETTINGS → Brightness**. Changing it doesn't make you
+  easier to spot.
 
 On a job:
 

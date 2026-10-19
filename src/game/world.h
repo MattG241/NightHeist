@@ -58,6 +58,8 @@ void world_update(World *w, float dt);
 void world_draw(World *w, const WorldView *v);
 /* Ambient light for a dynamic object at p (for characters, loot, doors). */
 NhColor world_ambient_at(const World *w, NhVec3 p);
+/* Display brightness 1..5 (3 = default); takes effect on the next build or rebake. */
+void world_set_brightness(int level);
 /* Row-major GL-style view-projection used for culling. */
 void world_view_proj(const WorldView *v, float out[16]);
 

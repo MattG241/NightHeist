@@ -97,6 +97,7 @@ static void apply_settings(void)
     s_settings.music_volume = (float)s_save_settings.music / 10.0f;
     s_settings.sfx_volume = (float)s_save_settings.sfx / 10.0f;
     audio_volumes(s_save_settings.music, s_save_settings.sfx);
+    world_set_brightness(s_save_settings.brightness);
 }
 
 /* Opt-in playtest log: one CSV line per job on the SD card. */

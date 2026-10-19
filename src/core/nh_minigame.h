@@ -49,6 +49,7 @@ typedef struct NhSafecrack {
     float clunk;              /* feedback 0..1, decays */
     float time;
     int mistakes;
+    int tol;                  /* how close to the number counts (default 1) */
     bool done;
 } NhSafecrack;
 

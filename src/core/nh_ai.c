@@ -1030,6 +1030,13 @@ static void guard_tick(AiWorld *w, int gi, const AiPlayerView *pv, float dt)
         pick_anim(g);
         return;
     }
+    if (g->stun_t > 0.0f) {
+        g->stun_t -= dt;
+        g->speed = 0.0f;
+        g->has_goal = false;
+        pick_anim(g);
+        return;
+    }
     /* Perception, staggered: each guard thinks every other tick. */
     bool think = ((w->tick + (uint32_t)gi) & 1u) == 0;
     if (think) {
@@ -1074,7 +1081,7 @@ static void guard_tick(AiWorld *w, int gi, const AiPlayerView *pv, float dt)
                 NhVec3 back = nh_v3_sub(bv->beam_hit, nh_v3_scale(to, 0.15f / bd));
                 float t;
                 if (!lv_raycast(w->L, eye, back, &t)) {
-                    g->suspicion += 0.45f * a->gain * w->difficulty * dtp * (1.0f - bd / 22.0f + 0.3f);
+                    g->suspicion += 0.3f * a->gain * w->difficulty * dtp * (1.0f - bd / 22.0f + 0.3f);
                     if (gain <= 0.0f)
                         g->stim = bv->beam_hit;
                 }
@@ -1278,6 +1285,13 @@ static float torch_light_on_player(const AiWorld *w, const AiPlayerView *pv)
 }
 
 void ai_tick(AiWorld *w, const AiPlayerView *pv) { ai_tick_views(w, pv, 1); }
+
+void ai_shove(AiWorld *w, int g, int view, float seconds)
+{
+    if (g >= 0 && g < w->n)
+        w->g[g].stun_t = seconds;
+    ai_release_caught(w, view);
+}
 
 void ai_release_caught(AiWorld *w, int view)
 {

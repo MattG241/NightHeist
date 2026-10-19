@@ -83,6 +83,7 @@ typedef struct AiGuard {
     uint8_t active, arch, state, prev_state, anim, action;
     int8_t partner;         /* elite pair / dog-handler link, -1 if none */
     uint8_t target;         /* co-op: the player view this guard is watching */
+    float stun_t;           /* shoved off balance: frozen for this long */
     NhVec3 pos;
     float yaw, head_yaw, speed;
     int floor;
@@ -237,6 +238,9 @@ void ai_report(AiWorld *w, NhVec3 where);
 int ai_spawn_police(AiWorld *w, NhVec3 at, NhVec3 lkp);
 /* Tranquiliser: knocked out after `seconds` (they stagger meanwhile). */
 void ai_tranquilise(AiWorld *w, int g, float seconds);
+/* The player broke free: the guard stumbles for `seconds`, then carries on
+ * the chase from where it was. The player's catch is cleared. */
+void ai_shove(AiWorld *w, int g, int view, float seconds);
 /* Bodies picked up / put down by the player. */
 void ai_carry(AiWorld *w, int g, bool carried);
 

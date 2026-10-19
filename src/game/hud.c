@@ -112,7 +112,8 @@ static void draw_lockpick(const Heist *h)
     const NhLockpick *lp = &h->me->lp;
     panel(150, 120, 340, 210);
     centered(130, 2, HI, "LOCKPICK");
-    centered(150, 1, DIM, "Twist the remote to feel for each pin. A to set it. B to stop.");
+    centered(150, 1, DIM, h->simple ? "Move the stick left and right. When it clicks and shakes, press A. B to stop."
+                                    : "Twist the remote to feel for each pin. A to set it. B to stop.");
     float pw = 300.0f / (float)lp->npins;
     for (int i = 0; i < lp->npins; i++) {
         float x = 170 + (float)i * pw;
@@ -136,7 +137,8 @@ static void draw_safe(const Heist *h)
     const NhSafecrack *sc = &h->me->sc;
     panel(170, 100, 300, 260);
     centered(110, 2, HI, "SAFE");
-    centered(130, 1, DIM, "Twist to spin the dial. Stop on the clunk, press A.");
+    centered(130, 1, DIM, h->simple ? "Stick left/right turns the dial (the arrow says which way). On the CLUNK, press A."
+                                    : "Twist to spin the dial. Stop on the clunk, press A.");
     float cx = 320, cy = 240, r = 70;
     for (int k = 0; k < 100; k += 5) {
         float a = (float)k / 100.0f * 6.2832f - 1.5708f - sc->dial / 100.0f * 6.2832f;
@@ -156,7 +158,8 @@ static void draw_hack(const Heist *h)
     const NhHack *hk = &h->me->hk;
     panel(160, 90, 320, 290);
     centered(96, 2, HI, "HACK");
-    centered(114, 1, DIM, "Match the signal with the pointer. Hold it steady.");
+    centered(114, 1, DIM, h->simple ? "Steer with the stick until the lines match. Hold it there."
+                                    : "Match the signal with the pointer. Hold it steady.");
     /* Window 170..470 x 120..360 maps 0..1 (pointer). */
     text_rect(170, 120, 300, 240, nh_rgba(5, 25, 15, 230));
     float tf = hk->freq[hk->cur], ta = hk->amp[hk->cur];
@@ -353,6 +356,16 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
     if (h->me->caught_t > 0.0f) {
         text_rect(0, 0, 640, 480, nh_rgba(60, 0, 0, (uint8_t)(160 * NH_MIN(1.0f, 2.5f - h->me->caught_t + 0.2f))));
         centered(200, 5, RED, "CAUGHT");
+    } else if (h->me->grab_t > 0.0f) {
+        text_rect(0, 0, 640, 480, nh_rgba(70, 20, 0, 110));
+        centered(150, 4, RED, "GRABBED!");
+        centered(200, 3, FG, "MASH  A  TO  BREAK  FREE");
+        float k = (float)h->me->grab_presses / 6.0f;
+        text_rect(200, 250, 240, 18, nh_rgba(0, 0, 0, 200));
+        text_rect(202, 252, 236 * NH_MIN(k, 1.0f), 14, HI);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.1f s", (double)h->me->grab_t);
+        centered(276, 2, FG, buf);
     } else if (h->me->cuffed) {
         text_rect(0, 0, 640, 480, nh_rgba(40, 0, 0, 150));
         centered(170, 4, RED, "CUFFED");

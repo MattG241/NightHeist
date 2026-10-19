@@ -8,7 +8,7 @@
 #include "nh_campaign.h"
 #include "nh_player.h"
 
-#define SAVE_VERSION 2 /* 2: control scheme, tips seen */
+#define SAVE_VERSION 3 /* 2: control scheme, tips seen; 3: brightness */
 #define SAVE_MAX_BYTES 4096
 
 typedef struct NhSaveSettings {
@@ -16,6 +16,7 @@ typedef struct NhSaveSettings {
     uint8_t rumble, subtitles, music, sfx; /* volumes 0..10 */
     uint8_t difficulty;                    /* 0 easy, 1 normal, 2 hard */
     uint8_t playlog;                       /* opt-in playtest logging */
+    uint8_t brightness;                    /* 1..5, 3 = default */
 } NhSaveSettings;
 
 void save_default_settings(NhSaveSettings *s);

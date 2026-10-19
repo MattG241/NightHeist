@@ -46,9 +46,19 @@ static float aim_score(const Heist *h, NhVec3 p, float reach)
     float d = nh_v3_len(to);
     if (d > reach || d < 0.05f)
         return -1.0f;
-    float c = nh_v3_dot(nh_v3_scale(to, 1.0f / d), aim(h));
-    if (c < 0.82f)
-        return -1.0f;
+    float c;
+    if (h->simple) {
+        /* Simple controls: whatever is in front of you, high or low. */
+        NhVec3 fwd = nh_dir_from_yaw_pitch(h->me->player.yaw, 0.0f);
+        float fl = sqrtf(to.x * to.x + to.z * to.z);
+        c = fl < 0.15f ? 1.0f : (to.x * fwd.x + to.z * fwd.z) / fl;
+        if (c < 0.7f)
+            return -1.0f;
+    } else {
+        c = nh_v3_dot(nh_v3_scale(to, 1.0f / d), aim(h));
+        if (c < 0.82f)
+            return -1.0f;
+    }
     /* Line of sight to just in front of it. */
     NhVec3 q = nh_v3_sub(p, nh_v3_scale(to, 0.35f / d));
     float t;
@@ -475,6 +485,7 @@ static void perform(Heist *h, const Action *a)
             h->me->mg = MG_KIND_LOCK;
             h->me->mg_target = a->target;
             lp_init(&h->me->lp, d->lock_level, &h->rng);
+            h->me->lp.window *= h->difficulty == 2 ? 1.0f : 1.5f;
             h->me->lp.npins = NH_MAX(2, h->me->lp.npins - h->perks.pick_bonus); /* picks upgrade, locksmith */
             return;
         }
@@ -505,11 +516,18 @@ static void perform(Heist *h, const Action *a)
         h->me->mg = MG_KIND_SAFE;
         h->me->mg_target = a->target;
         sc_init(&h->me->sc, h->plan.ent[a->target].tier, &h->rng);
+        if (h->difficulty < 2)
+            h->me->sc.tol = 2;
         break;
     case ACT_TERMINAL:
         h->me->mg = MG_KIND_HACK;
         h->me->mg_target = a->target;
         hk_init(&h->me->hk, NH_MAX(1, h->plan.ent[a->target].tier), &h->rng);
+        h->me->hk_x = h->me->hk_y = 0.5f;
+        if (h->difficulty < 2) {
+            h->me->hk.tol *= 1.5f;
+            h->me->hk.time_limit += 20.0f;
+        }
         h->me->hk.layers = NH_MAX(1, h->me->hk.layers - h->perks.hack_bonus);
         break;
     case ACT_CONSOLE:
@@ -726,19 +744,27 @@ void interact_update(Heist *h, const NhInput *in, const GameSettings *gs)
         }
         bool a = (in->pressed & NH_BTN_A) != 0;
         MgEvent ev = MG_NONE;
+        /* Simple controls: the stick stands in for twisting and pointing. */
+        float twist = h->simple ? in->stick_x * NH_DEG2RAD(62.0f) : in->remote_roll;
         if (h->me->mg == MG_KIND_LOCK) {
-            ev = lp_tick(&h->me->lp, in->remote_roll, a, dt);
+            ev = lp_tick(&h->me->lp, twist, a, dt);
             if (ev == MG_SLIP)
                 heist_noise(h, h->me->player.pos, h->perks.noisy_slips ? 5.0f : 3.0f, NH_NOISE_GADGET);
             if (ev == MG_TICK || ev == MG_SET)
                 h->me->rumble_ticks = NH_MAX(h->me->rumble_ticks, ev == MG_SET ? 6 : 2);
         } else if (h->me->mg == MG_KIND_SAFE) {
-            ev = sc_tick(&h->me->sc, in->remote_roll, a, dt);
+            ev = sc_tick(&h->me->sc, h->simple ? twist * 0.6f : twist, a, dt);
             if (ev == MG_TICK || ev == MG_SET)
                 h->me->rumble_ticks = NH_MAX(h->me->rumble_ticks, ev == MG_SET ? 8 : 4);
         } else {
             float px = (in->ir_x - 170.0f) / 300.0f, py = (in->ir_y - 120.0f) / 240.0f;
-            ev = hk_tick(&h->me->hk, NH_CLAMP(px, 0.0f, 1.0f), NH_CLAMP(py, 0.0f, 1.0f), in->ir_valid, dt);
+            bool valid = in->ir_valid;
+            if (h->simple) {
+                h->me->hk_x = NH_CLAMP(h->me->hk_x + in->stick_x * 0.55f * dt, 0.0f, 1.0f);
+                h->me->hk_y = NH_CLAMP(h->me->hk_y - in->stick_y * 0.55f * dt, 0.0f, 1.0f);
+                px = h->me->hk_x, py = h->me->hk_y, valid = true;
+            }
+            ev = hk_tick(&h->me->hk, NH_CLAMP(px, 0.0f, 1.0f), NH_CLAMP(py, 0.0f, 1.0f), valid, dt);
         }
         static const int k_mg_sfx[3][6] = {
             /* NONE, TICK, SET, SLIP, DONE, FAIL */

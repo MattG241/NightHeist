@@ -20,7 +20,7 @@ void nh_controls_default(NhControlSettings *s)
     s->ir_smoothing = 0.35f;
     s->box_w = 0.55f;
     s->box_h = 0.5f;
-    s->turn_speed = 2.6f;
+    s->turn_speed = 2.2f;
     s->crouch_toggle = false;
     s->invert_y = false;
 }
@@ -89,17 +89,20 @@ void nh_player_tick(NhPlayer *p, const Level *L, const NhPlayerInput *in, const 
     /* ---- look ---- */
     bool simple = cs->scheme == NH_CONTROLS_SIMPLE;
     float pitch_sign = cs->invert_y ? 1.0f : -1.0f;
-    if (in->ir_valid && !in->frozen) {
+    if (simple) {
+        /* Simple controls: you aim where you face and the view stays level. */
+        p->cursor_x = 320.0f;
+        p->cursor_y = 240.0f;
+        if (!in->frozen)
+            p->pitch = nh_approach(p->pitch, 0.0f, 1.2f * dt);
+    } else if (in->ir_valid && !in->frozen) {
         float k = 1.0f - NH_CLAMP(cs->ir_smoothing, 0.0f, 0.95f);
         p->cursor_x = nh_lerpf(p->cursor_x, NH_CLAMP(in->ir_x, 0.0f, 640.0f), k);
         p->cursor_y = nh_lerpf(p->cursor_y, NH_CLAMP(in->ir_y, 0.0f, 480.0f), k);
         float tx, ty;
         nh_player_turn_amount(p, cs, &tx, &ty);
-        if (!simple)
-            p->yaw = nh_wrap_angle(p->yaw - tx * cs->turn_speed * dt);
+        p->yaw = nh_wrap_angle(p->yaw - tx * cs->turn_speed * dt);
         p->pitch = NH_CLAMP(p->pitch + pitch_sign * ty * cs->turn_speed * 0.7f * dt, -PITCH_LIMIT, PITCH_LIMIT);
-    } else if (simple && !in->frozen) {
-        p->pitch = nh_approach(p->pitch, 0.0f, 0.8f * dt); /* no pointer: the view levels out */
     }
     if (simple) {
         /* The stick turns: gentle near the centre, eased in and out. */

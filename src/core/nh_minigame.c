@@ -67,6 +67,7 @@ void sc_init(NhSafecrack *sc, int tier, NhRng *rng)
     for (int i = 0; i < sc->nnums; i++)
         sc->combo[i] = (int)nh_rng_range(rng, 100);
     sc->dial = sc->last_dial = 0.0f;
+    sc->tol = 1;
 }
 
 int sc_direction(const NhSafecrack *sc) { return (sc->cur & 1) ? -1 : 1; }
@@ -112,7 +113,7 @@ MgEvent sc_tick(NhSafecrack *sc, float twist, bool press_a, float dt)
         int at = (int)sc->dial;
         int d = abs(at - sc->combo[sc->cur]);
         d = NH_MIN(d, 100 - d);
-        if (d <= 1 && sc->passed) {
+        if (d <= sc->tol && sc->passed) {
             sc->cur++;
             sc->passed = false;
             if (sc->cur >= sc->nnums) {

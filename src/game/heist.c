@@ -168,7 +168,11 @@ bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const
     nh_nav_build(h->nav, &h->world.L, 0.3f);
     spawn_guards(h);
     nh_rng_seed(&h->rng, h->world.L.seed, 0x1A7u);
-    h->ai.difficulty = difficulty == 0 ? 0.75f : difficulty == 2 ? 1.3f : 1.0f;
+    /* Guards' eyes: forgiving by default, the old values on hard. */
+    h->difficulty = NH_CLAMP(difficulty, 0, 2);
+    h->ai.difficulty = difficulty == 0 ? 0.45f : difficulty == 2 ? 1.0f : 0.65f;
+    for (int i = 0; i < h->nplayers; i++)
+        h->pl[i].escapes_left = difficulty == 0 ? 3 : difficulty == 2 ? 1 : 2;
     if (h->generated) {
         job_init(&h->state, &h->world.L, &h->plan, h->world.L.seed);
         h->state.police_delay = 100.0f - 12.0f * (float)h->job.security;
@@ -302,13 +306,13 @@ static void fill_player_view(Heist *h)
     pv->height = nh_player_eye_height(p) + 0.1f;
     pv->speed = p->speed;
     /* A lit torch makes the player much easier to spot. */
-    pv->light = NH_MAX(h->me->light_level, h->me->torch_on ? 0.7f : 0.0f);
+    pv->light = NH_MAX(h->me->light_level, h->me->torch_on ? 0.4f : 0.0f);
     pv->crouched = p->crouch > 0.5f;
     pv->torch_on = h->me->torch_on;
     pv->in_vent = p->mode == NH_MOVE_VENT;
     pv->disguised = false;
     pv->hiding_prop = h->me->hide_prop;
-    pv->cuffed = h->me->cuffed || h->me->caught_t > 0.0f;
+    pv->cuffed = h->me->cuffed || h->me->caught_t > 0.0f || h->me->grab_t > 0.0f;
     pv->beam_valid = false;
     if (h->me->torch_on && !pv->in_vent && h->me->hide_prop < 0) {
         NhVec3 a = pv->head, b = nh_v3_add(a, nh_v3_scale(h->me->torch_dir, 20.0f));
@@ -433,7 +437,15 @@ static void update_guards(Heist *h)
             subtitle(h, "Control: no answer from your partner. Go and look.");
             break;
         case EV_CAUGHT:
-            if (h->me->caught_t <= 0.0f && !h->me->cuffed) {
+            if (h->me->caught_t <= 0.0f && !h->me->cuffed && h->me->grab_t <= 0.0f && h->me->escapes_left > 0) {
+                /* Grabbed: a few seconds to wriggle free. */
+                h->me->grab_t = 3.0f;
+                h->me->grab_presses = 0;
+                h->me->grab_guard = e->guard;
+                interact_drop_all(h);
+                audio_play(SFX_GUARD_ALERT, 0.9f, 0.0f, 1.0f);
+                h->me->rumble_ticks = 30;
+            } else if (h->me->caught_t <= 0.0f && !h->me->cuffed && h->me->grab_t <= 0.0f) {
                 h->me->caught_t = 2.5f;
                 audio_play(SFX_CAUGHT, 0.9f, 0.0f, 1.0f);
                 heist_status(h, "CAUGHT");
@@ -461,6 +473,17 @@ static void player_after(Heist *h, const GameSettings *gs)
 {
     HeistPlayer *me = h->me;
     World *w = &h->world;
+    if (me->grab_t > 0.0f) {
+        me->grab_t -= NH_TICK_DT;
+        if (me->grab_t <= 0.0f) {
+            /* Didn't make it: caught for real. */
+            me->escapes_left = 0;
+            me->caught_t = 2.5f;
+            audio_play(SFX_CAUGHT, 0.9f, 0.0f, 1.0f);
+            heist_status(h, "CAUGHT");
+            me->rumble_ticks = 40;
+        }
+    }
     if (me->caught_t > 0.0f) {
         me->caught_t -= NH_TICK_DT;
         if (me->caught_t <= 0.0f) {
@@ -510,7 +533,7 @@ static void player_after(Heist *h, const GameSettings *gs)
     me->torch_dir = nh_v3_norm(nh_v3_lerp(me->torch_dir, aim, 0.35f));
     /* Player light level: static light at the body plus the torch's spill. */
     NhVec3 body = nh_v3_add(me->player.pos, nh_v3(0, 1.0f, 0));
-    me->light_level = nh_bake_light_level(&w->L, body, &w->bake) + (me->torch_on ? 0.18f : 0.0f);
+    me->light_level = nh_bake_light_level(&w->L, body, &w->bake) + (me->torch_on ? 0.08f : 0.0f);
     me->light_level = NH_CLAMP(me->light_level, 0.0f, 1.0f);
     if (me->status_ticks > 0)
         me->status_ticks--;
@@ -754,7 +777,7 @@ static void update_player(Heist *h, const NhInput *in, GameSettings *gs)
     pi.lean = NH_CLAMP(in->nunchuk_roll / NH_DEG2RAD(30.0f), -1.0f, 1.0f);
     pi.crouch_held = (in->held & NH_BTN_Z) != 0;
     pi.crouch_pressed = (in->pressed & NH_BTN_Z) != 0;
-    pi.frozen = me->caught_t > 0.0f || me->cuffed || me->mg != MG_KIND_NONE;
+    pi.frozen = me->caught_t > 0.0f || me->cuffed || me->mg != MG_KIND_NONE || me->grab_t > 0.0f;
     if (me->hide_prop >= 0) {
         /* Hidden: look around, don't move. */
         pi.move_x = pi.move_y = 0.0f;
@@ -791,6 +814,22 @@ static bool tick_player(Heist *h, const NhInput *in, GameSettings *gs)
         }
     }
     update_player(h, in, gs);
+    if (me->grab_t > 0.0f) {
+        if (in->pressed & (NH_BTN_A | NH_BTN_B | NH_BTN_C | NH_BTN_Z)) {
+            me->grab_presses++;
+            me->rumble_ticks = NH_MAX(me->rumble_ticks, 4);
+        }
+        if (me->grab_presses >= 6) {
+            ai_shove(&h->ai, me->grab_guard, me->index, 2.5f);
+            me->grab_t = 0.0f;
+            me->escapes_left--;
+            audio_play(SFX_TAKEDOWN, 0.7f, 0.0f, 1.3f);
+            heist_status(h, me->escapes_left > 0 ? "Broke free! Get out of sight!" : "Broke free! Next time they'll hold on.");
+        }
+        me->act.kind = ACT_NOTHING;
+        me->takedown = -1;
+        return true;
+    }
     bool free = me->caught_t <= 0.0f && !me->cuffed;
     if (free && (in->pressed & NH_BTN_B) && me->mg == MG_KIND_NONE && me->hide_prop < 0)
         me->torch_on = !me->torch_on;
@@ -812,6 +851,7 @@ void heist_tick(Heist *h, const NhInput in[NH_MAX_PLAYERS], GameSettings *gs)
 {
     World *w = &h->world;
     h->subtitles = gs->subtitles;
+    h->simple = gs->controls.scheme == NH_CONTROLS_SIMPLE;
     h->me = &h->pl[0];
     uint32_t any_pressed = 0;
     for (int i = 0; i < h->nplayers; i++)

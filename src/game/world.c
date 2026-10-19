@@ -104,6 +104,32 @@ static bool copy_batch(World *w, const NhBatch *b, NhArena *arena)
     return true;
 }
 
+/* Brightness: a display curve over the baked light that lifts the shadows
+ * (what the guards can see is worked out separately and doesn't change). */
+static uint8_t s_curve[256];
+static int s_brightness;
+
+void world_set_brightness(int level)
+{
+    level = NH_CLAMP(level, 1, 5);
+    if (level == s_brightness)
+        return;
+    s_brightness = level;
+    static const float k_gamma[5] = { 1.0f, 1.25f, 1.5f, 1.8f, 2.1f };
+    for (int i = 0; i < 256; i++)
+        s_curve[i] = (uint8_t)(255.0f * powf((float)i / 255.0f, 1.0f / k_gamma[level - 1]) + 0.5f);
+}
+
+static void display_curve(NhMesh *m)
+{
+    if (!s_brightness)
+        world_set_brightness(3);
+    for (uint32_t i = 0; i < m->vcount; i++) {
+        NhColor *c = &m->colors[i];
+        c->r = s_curve[c->r], c->g = s_curve[c->g], c->b = s_curve[c->b];
+    }
+}
+
 bool world_build(World *w, NhArena *arena, NhArena *scratch)
 {
     uint64_t t0 = plat_time_us();
@@ -149,6 +175,7 @@ bool world_build(World *w, NhArena *arena, NhArena *scratch)
     for (int i = 0; i < w->nbatches; i++) {
         WorldBatch *wb = &w->batches[i];
         nh_bake_mesh(L, wb->room, &wb->cpu, wb->albedo, &w->bake);
+        display_curve(&wb->cpu);
         wb->gm = gfx_mesh_create(&wb->cpu, true);
     }
     for (int i = 0; i < L->nprops; i++) {
@@ -176,6 +203,7 @@ void world_rebake(World *w)
     for (int i = 0; i < w->nbatches; i++) {
         WorldBatch *wb = &w->batches[i];
         nh_bake_mesh(&w->L, wb->room, &wb->cpu, wb->albedo, &w->bake);
+        display_curve(&wb->cpu);
         gfx_mesh_set_colors(wb->gm, wb->cpu.colors);
     }
     for (int i = 0; i < w->L.nprops; i++) {
@@ -189,6 +217,7 @@ void world_rebake_room(World *w, int room)
     for (int i = w->room_first[room]; i < w->room_first[room] + w->room_count[room]; i++) {
         WorldBatch *wb = &w->batches[i];
         nh_bake_mesh(&w->L, wb->room, &wb->cpu, wb->albedo, &w->bake);
+        display_curve(&wb->cpu);
         gfx_mesh_set_colors(wb->gm, wb->cpu.colors);
     }
     for (int i = 0; i < w->L.nprops; i++) {
@@ -215,7 +244,10 @@ static uint8_t to8(float v)
 NhColor world_ambient_at(const World *w, NhVec3 p)
 {
     NhVec3 c = nh_bake_sample(&w->L, p, nh_v3(0, 0, 0), 0, &w->bake);
-    return nh_rgba(to8(fminf(c.x, 1.0f)), to8(fminf(c.y, 1.0f)), to8(fminf(c.z, 1.0f)), 255);
+    if (!s_brightness)
+        world_set_brightness(3);
+    return nh_rgba(s_curve[to8(fminf(c.x, 1.0f))], s_curve[to8(fminf(c.y, 1.0f))], s_curve[to8(fminf(c.z, 1.0f))],
+                   255);
 }
 
 void world_view_proj(const WorldView *v, float out[16])

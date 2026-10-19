@@ -32,6 +32,7 @@ void save_default_settings(NhSaveSettings *s)
     s->music = 7;
     s->sfx = 8;
     s->difficulty = 1;
+    s->brightness = 3;
 }
 
 /* ---- writer / reader ------------------------------------------------------- */
@@ -119,6 +120,7 @@ static void write_settings(W *w, const NhSaveSettings *s)
     w8(w, s->difficulty);
     w8(w, s->playlog);
     w8(w, (uint32_t)s->controls.scheme);
+    w8(w, s->brightness);
 }
 
 static void read_settings(R *r, NhSaveSettings *s, int version)
@@ -136,6 +138,12 @@ static void read_settings(R *r, NhSaveSettings *s, int version)
     s->difficulty = (uint8_t)r8_max(r, 2);
     s->playlog = (uint8_t)r8(r);
     s->controls.scheme = version >= 2 ? (int)r8_max(r, NH_CONTROLS_COUNT - 1) : NH_CONTROLS_SIMPLE;
+    if (version >= 3) {
+        uint32_t b = r8_max(r, 5);
+        s->brightness = (uint8_t)(b ? b : 3);
+    } else {
+        s->brightness = 3;
+    }
 }
 
 static void write_offer(W *w, const NhJobOffer *o)

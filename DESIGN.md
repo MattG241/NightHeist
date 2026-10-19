@@ -895,3 +895,41 @@ Fixes:
   second one says "another".
 - **Settings:** the music and sound volumes, saved since Phase 8, now have
   rows on the SETTINGS tab.
+
+## 16. Making it playable (second playtest)
+
+Feedback was that the game was "pretty impossible": players were caught too
+fast, couldn't see, fought the controls, and couldn't do the minigames.
+Changes:
+
+- **Detection.**
+  - Guard eyesight is scaled by difficulty: easy 0.45, normal 0.65, hard
+    1.0. Hard used to be 1.3, and the old normal is the new hard.
+  - A lit torch counts as light level 0.4 on the player, down from 0.7, and
+    adds 0.08 to the light level, down from 0.18.
+  - Suspicion from seeing a torch beam is down by a third.
+- **Grabbed, not caught.**
+  - A catch first becomes a grab: 3 seconds to press A (or B, C or Z) six
+    times.
+  - Breaking free stuns the guard for 2.5 s (`ai_shove`) and clears the
+    catch, so you can run.
+  - Escapes per job: easy 3, normal 2, hard 1. After that, or if you don't
+    break free in time, you're caught as before (cuffed in co-op).
+- **Seeing.**
+  - A brightness setting from 1 to 5 (default 3) puts a gamma curve over
+    the baked light. Level 3 uses γ 1.5, which roughly doubles the darkest
+    values.
+  - The curve covers the world meshes, props and characters. Detection uses
+    the raw bake, so a brighter screen doesn't make you more visible.
+- **Simple controls.**
+  - You aim where you face (the cursor is fixed at the centre) and the view
+    stays level.
+  - "Use" picks whatever is in front of you, high or low: a 0.7 horizontal
+    cone.
+  - The default turn speed is now 2.2 rad/s.
+- **Minigames.**
+  - With Simple controls, the stick replaces the twist for the lock (stick
+    x × 62°) and the safe dial (60% speed), and steers the hacking cursor.
+  - On easy and normal the sweet spots are wider: the lock window ×1.5, the
+    safe ±2 instead of ±1, and the hacking tolerance ×1.5 with +20 s.
+- **Saves.** Format version 3 adds brightness. v1 and v2 saves still load.

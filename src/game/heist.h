@@ -107,6 +107,10 @@ typedef struct HeistPlayer {
     int tip;                /* tip on screen (GuideTip + 1), 0 none */
     float tip_t;
     float lit_t;            /* seconds spent standing in bright light */
+    /* Grabbed by a guard: mash A to break free */
+    float grab_t;           /* > 0 while grabbed */
+    int grab_presses, grab_guard, escapes_left;
+    float hk_x, hk_y;       /* hacking cursor steered with the stick */
 } HeistPlayer;
 
 typedef struct Heist {
@@ -160,6 +164,8 @@ typedef struct Heist {
     int pause_sel, pause_page; /* page 0 menu, 1 controls, 2 confirm abandoning */
     int pause_owner;           /* the player who opened the pause menu */
     uint32_t tips_seen;        /* first-time tips shown (copied back to the campaign) */
+    bool simple;               /* SIMPLE control scheme this tick */
+    int difficulty;            /* 0 easy, 1 normal, 2 hard */
 } Heist;
 
 /* Start a job: a generated building, or the hand-built test level if job is NULL. */
