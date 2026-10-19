@@ -17,6 +17,10 @@ static BlockInfo block_info(NhTexFormat fmt)
     case NH_TF_RGBA8:
         b.block_bytes = 64;
         break;
+    case NH_TF_CMPR:
+        b.bw = 8;
+        b.bh = 8;
+        break;
     case NH_TF_IA8:
     case NH_TF_RGB565:
     default:
@@ -76,9 +80,24 @@ static uint16_t to565(const uint8_t *p)
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
+static uint16_t to5a3(const uint8_t *p)
+{
+    if (p[3] >= 224) {
+        unsigned r = (p[0] * 31u + 127u) / 255u, g = (p[1] * 31u + 127u) / 255u, bl = (p[2] * 31u + 127u) / 255u;
+        return (uint16_t)(0x8000u | (r << 10) | (g << 5) | bl);
+    }
+    unsigned a = (p[3] * 7u + 127u) / 255u, r = (p[0] * 15u + 127u) / 255u, g = (p[1] * 15u + 127u) / 255u,
+             bl = (p[2] * 15u + 127u) / 255u;
+    return (uint16_t)((a << 12) | (r << 8) | (g << 4) | bl);
+}
+
 void nh_tex_encode(NhTexFormat fmt, const uint8_t *rgba, int w, int h, uint8_t *out)
 {
     BlockInfo b = block_info(fmt);
+    if (fmt == NH_TF_CMPR) {
+        memset(out, 0, nh_tex_level_size(fmt, w, h));
+        return;
+    }
     uint8_t *o = out;
     for (int by = 0; by < h; by += b.bh) {
         for (int bx = 0; bx < w; bx += b.bw) {
@@ -105,6 +124,12 @@ void nh_tex_encode(NhTexFormat fmt, const uint8_t *rgba, int w, int h, uint8_t *
                         *o++ = p[3];
                         *o++ = luminance(p);
                         break;
+                    case NH_TF_RGB5A3: {
+                        uint16_t v = to5a3(p);
+                        *o++ = (uint8_t)(v >> 8);
+                        *o++ = (uint8_t)(v & 0xff);
+                        break;
+                    }
                     case NH_TF_RGB565:
                     default: {
                         uint16_t v = to565(p);
@@ -130,10 +155,57 @@ static void put(uint8_t *rgba, int w, int h, int x, int y, uint8_t r, uint8_t g,
     d[3] = a;
 }
 
+static void rgb565_expand(unsigned v, uint8_t out[3])
+{
+    unsigned r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
+    out[0] = (uint8_t)((r << 3) | (r >> 2));
+    out[1] = (uint8_t)((g << 2) | (g >> 4));
+    out[2] = (uint8_t)((b << 3) | (b >> 2));
+}
+
+/* One 4x4 CMPR sub-block (big-endian DXT1). */
+static void decode_cmpr_block(const uint8_t *s, uint8_t *rgba, int w, int h, int x0, int y0)
+{
+    unsigned c0 = ((unsigned)s[0] << 8) | s[1], c1 = ((unsigned)s[2] << 8) | s[3];
+    uint8_t pal[4][4];
+    rgb565_expand(c0, pal[0]);
+    rgb565_expand(c1, pal[1]);
+    pal[0][3] = pal[1][3] = 255;
+    for (int k = 0; k < 3; k++) {
+        if (c0 > c1) {
+            pal[2][k] = (uint8_t)((2 * pal[0][k] + pal[1][k]) / 3);
+            pal[3][k] = (uint8_t)((pal[0][k] + 2 * pal[1][k]) / 3);
+        } else {
+            pal[2][k] = (uint8_t)((pal[0][k] + pal[1][k]) / 2);
+            pal[3][k] = 0;
+        }
+    }
+    pal[2][3] = 255;
+    pal[3][3] = c0 > c1 ? 255 : 0;
+    for (int y = 0; y < 4; y++) {
+        uint8_t bits = s[4 + y];
+        for (int x = 0; x < 4; x++) {
+            int idx = (bits >> (6 - x * 2)) & 3;
+            int px = x0 + x, py = y0 + y;
+            if (px < w && py < h)
+                memcpy(rgba + ((size_t)py * (size_t)w + (size_t)px) * 4, pal[idx], 4);
+        }
+    }
+}
+
 void nh_tex_decode(NhTexFormat fmt, const uint8_t *in, int w, int h, uint8_t *rgba)
 {
     BlockInfo b = block_info(fmt);
     const uint8_t *s = in;
+    if (fmt == NH_TF_CMPR) {
+        for (int by = 0; by < h; by += 8)
+            for (int bx = 0; bx < w; bx += 8)
+                for (int sb = 0; sb < 4; sb++) {
+                    decode_cmpr_block(s, rgba, w, h, bx + (sb & 1) * 4, by + (sb >> 1) * 4);
+                    s += 8;
+                }
+        return;
+    }
     for (int by = 0; by < h; by += b.bh) {
         for (int bx = 0; bx < w; bx += b.bw) {
             if (fmt == NH_TF_RGBA8) {
@@ -154,6 +226,20 @@ void nh_tex_decode(NhTexFormat fmt, const uint8_t *in, int w, int h, uint8_t *rg
                         put(rgba, w, h, bx + x, by + y, s[1], s[1], s[1], s[0]);
                         s += 2;
                         break;
+                    case NH_TF_RGB5A3: {
+                        unsigned v = ((unsigned)s[0] << 8) | s[1];
+                        if (v & 0x8000) {
+                            unsigned r = (v >> 10) & 31, g = (v >> 5) & 31, bl = v & 31;
+                            put(rgba, w, h, bx + x, by + y, (uint8_t)((r << 3) | (r >> 2)),
+                                (uint8_t)((g << 3) | (g >> 2)), (uint8_t)((bl << 3) | (bl >> 2)), 255);
+                        } else {
+                            unsigned a = (v >> 12) & 7, r = (v >> 8) & 15, g = (v >> 4) & 15, bl = v & 15;
+                            put(rgba, w, h, bx + x, by + y, (uint8_t)(r * 17), (uint8_t)(g * 17), (uint8_t)(bl * 17),
+                                (uint8_t)((a << 5) | (a << 2) | (a >> 1)));
+                        }
+                        s += 2;
+                        break;
+                    }
                     case NH_TF_RGB565:
                     default: {
                         unsigned v = ((unsigned)s[0] << 8) | s[1];

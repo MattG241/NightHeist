@@ -60,9 +60,12 @@ typedef struct NhInput {
     uint32_t released;    /* went up since the last poll */
 } NhInput;
 
-void plat_input_poll(NhInput *out);
+#define NH_MAX_PLAYERS 2
+/* Player 0 is Wii Remote 1, player 1 is Wii Remote 2. Poll player 0 first
+ * each frame (it reads the hardware for both). */
+void plat_input_poll(int player, NhInput *out);
 /* The Wii Remote motor is on/off only; callers build patterns over time. */
-void plat_rumble(bool on);
+void plat_rumble(int player, bool on);
 
 /* ---- files -------------------------------------------------------------- */
 
@@ -88,7 +91,24 @@ typedef struct NhSound {
 
 /* volume 0..1, pan -1 (left) .. +1 (right). Returns voice id or -1. */
 int plat_audio_play(const NhSound *s, float volume, float pan);
+/* A looping voice; it plays until stopped. */
+int plat_audio_loop(const NhSound *s, float volume, float pan);
+void plat_audio_set(int voice, float volume, float pan);
 void plat_audio_stop(int voice);
+/* Calls between begin and end take effect together (music stems start in sync). */
+void plat_audio_begin(void);
+void plat_audio_end(void);
+
+/* ---- debug -------------------------------------------------------------- */
+
+/* Desktop-only override of the player's start (for screenshots/tests). */
+bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch);
+/* Testing aid: which job to generate (type -1 = the hand-built test level). */
+bool plat_debug_job(int *type, int *size, unsigned *seed, int *security);
+/* Testing aid: start with the debug overlay showing. */
+bool plat_debug_overlay(void);
+/* Testing aid: a debug job (--job / debug_start.txt) with two players. */
+bool plat_debug_coop(void);
 
 /* ---- memory stats (debug overlay) --------------------------------------- */
 

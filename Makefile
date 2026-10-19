@@ -36,14 +36,12 @@ DESKTOP_BIN   := $(DESKTOP_BUILD)/nightheist
 TEST_BIN      := $(TEST_BUILD)/nightheist_tests
 
 DESKTOP_OBJ := $(patsubst %.c,$(DESKTOP_BUILD)/%.o,$(CORE_SRC) $(GAME_SRC) $(DESKTOP_SRC))
-TEST_OBJ    := $(patsubst %.c,$(TEST_BUILD)/%.o,$(CORE_SRC) $(GAME_SRC) $(TEST_SRC))
-# Tests link the pure game sim but not the scene/renderer/app code.
-TEST_OBJ    := $(filter-out $(TEST_BUILD)/src/game/app.o $(TEST_BUILD)/src/game/demo_scene.o \
-                 $(TEST_BUILD)/src/game/text.o,$(TEST_OBJ))
+# Tests link only the platform-free core.
+TEST_OBJ    := $(patsubst %.c,$(TEST_BUILD)/%.o,$(CORE_SRC) src/game/testlevel.c $(TEST_SRC))
 
 DIST_DIR := dist/apps/NightHeist
 
-.PHONY: all desktop test wii wii-docker assets package clean
+.PHONY: seedmap audiodump all desktop test wii wii-docker assets package clean
 
 all: desktop test
 
@@ -76,15 +74,30 @@ wii:
 wii-docker:
 	docker run --rm -u $$(id -u):$$(id -g) -v "$(CURDIR)":/src -w /src $(DOCKER_IMAGE) make wii
 
+seedmap: build/seedmap
+
+audiodump: build/audiodump
+
+build/audiodump: tools/audiodump.c $(CORE_SRC) $(wildcard src/core/*.h)
+	@mkdir -p build
+	$(CC) -std=c11 -O2 -Wall -Wextra -Isrc -o $@ tools/audiodump.c $(CORE_SRC) -lm
+
+build/seedmap: tools/seedmap.c $(CORE_SRC) $(wildcard src/core/*.h)
+	@mkdir -p build
+	$(CC) -std=c11 -O2 -Wall -Wextra -Isrc -o $@ tools/seedmap.c $(CORE_SRC) -lm
+
 assets:
 	$(PYTHON) tools/gen_font.py
 	$(PYTHON) tools/gen_icon.py
+	$(PYTHON) tools/make_art.py
+	$(PYTHON) tools/nhconv.py manifest assets/manifest.json apps/NightHeist/data
 
 package:
 	@test -f build/wii/nightheist.dol || { echo "build/wii/nightheist.dol missing: run 'make wii' or 'make wii-docker' first"; exit 1; }
 	@mkdir -p $(DIST_DIR)
 	cp build/wii/nightheist.dol $(DIST_DIR)/boot.dol
 	cp apps/NightHeist/meta.xml apps/NightHeist/icon.png $(DIST_DIR)/
+	rm -rf $(DIST_DIR)/data && cp -r apps/NightHeist/data $(DIST_DIR)/data
 	cd dist && rm -f NightHeist.zip && $(PYTHON) -m zipfile -c NightHeist.zip apps
 	@echo "packaged $(DIST_DIR) and dist/NightHeist.zip"
 

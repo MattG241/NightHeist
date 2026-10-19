@@ -8,9 +8,9 @@
 #include "platform/platform.h"
 #include "wii_internal.h"
 
-#define STICK_DEADZONE 0.15f
+#define STICK_DEADZONE 0.2f
 
-static bool s_rumble;
+static bool s_rumble[NH_MAX_PLAYERS];
 
 void wii_input_init(void)
 {
@@ -22,6 +22,7 @@ void wii_input_init(void)
 void wii_input_shutdown(void)
 {
     WPAD_Rumble(WPAD_CHAN_0, 0);
+    WPAD_Rumble(WPAD_CHAN_1, 0);
     WPAD_Shutdown();
 }
 
@@ -46,24 +47,41 @@ static uint32_t map_buttons(u32 w)
     return out;
 }
 
-/* Normalise one stick axis against the Nunchuk's own calibration. */
-static float stick_axis(int pos, int center, int min, int max)
+/* Normalise one stick axis against the Nunchuk's own calibration. Some
+ * Nunchuks (third-party ones especially) report nonsense calibration, which
+ * reads as the stick held over to one side; those get standard values,
+ * centred on where the stick rested when it was plugged in. */
+static float stick_axis(int pos, int center, int min, int max, float rest)
 {
+    bool sane = center > 90 && center < 166 && max - center > 50 && center - min > 50 && max <= 255 && min >= 0;
+    if (!sane) {
+        center = (int)rest;
+        min = center - 100;
+        max = center + 100;
+    }
     float range = (float)(pos >= center ? max - center : center - min);
     if (range < 1.0f)
         return 0.0f;
     return NH_CLAMP((float)(pos - center) / range, -1.0f, 1.0f);
 }
 
-void plat_input_poll(NhInput *out)
+/* Where each Nunchuk's stick sat when it was plugged in (-1: not seen yet). */
+static float s_rest[NH_MAX_PLAYERS][2] = { { -1, -1 }, { -1, -1 } };
+
+void plat_input_poll(int player, NhInput *out)
 {
     *out = (NhInput){ 0 };
-    WPAD_ScanPads();
-
-    u32 type = 0;
-    if (WPAD_Probe(WPAD_CHAN_0, &type) != WPAD_ERR_NONE)
+    if (player == 0)
+        WPAD_ScanPads(); /* reads every remote */
+    if (player < 0 || player >= NH_MAX_PLAYERS)
         return;
-    WPADData *wd = WPAD_Data(WPAD_CHAN_0);
+    int chan = player == 0 ? WPAD_CHAN_0 : WPAD_CHAN_1;
+
+    /* Not connected (yet): this frame has no input; try again next frame. */
+    u32 type = 0;
+    if (WPAD_Probe(chan, &type) != WPAD_ERR_NONE)
+        return;
+    WPADData *wd = WPAD_Data(chan);
     if (!wd)
         return;
 
@@ -78,10 +96,18 @@ void plat_input_poll(NhInput *out)
     out->remote_roll = NH_DEG2RAD(wd->orient.roll);
 
     out->expansion = (int)wd->exp.type;
+    if (wd->exp.type != WPAD_EXP_NUNCHUK)
+        s_rest[player][0] = s_rest[player][1] = -1.0f; /* re-learn when one is plugged in */
     if (wd->exp.type == WPAD_EXP_NUNCHUK) {
         const joystick_t *js = &wd->exp.nunchuk.js;
-        float x = stick_axis(js->pos.x, js->center.x, js->min.x, js->max.x);
-        float y = stick_axis(js->pos.y, js->center.y, js->min.y, js->max.y);
+        float *rest = s_rest[player];
+        if (rest[0] < 0.0f) {
+            /* First reading: trust it as the centre only if it's near the middle. */
+            rest[0] = js->pos.x > 80 && js->pos.x < 176 ? (float)js->pos.x : 128.0f;
+            rest[1] = js->pos.y > 80 && js->pos.y < 176 ? (float)js->pos.y : 128.0f;
+        }
+        float x = stick_axis(js->pos.x, js->center.x, js->min.x, js->max.x, rest[0]);
+        float y = stick_axis(js->pos.y, js->center.y, js->min.y, js->max.y, rest[1]);
         float mag = sqrtf(x * x + y * y);
         if (mag < STICK_DEADZONE) {
             x = y = 0.0f;
@@ -98,10 +124,10 @@ void plat_input_poll(NhInput *out)
     }
 }
 
-void plat_rumble(bool on)
+void plat_rumble(int player, bool on)
 {
-    if (on == s_rumble)
+    if (player < 0 || player >= NH_MAX_PLAYERS || on == s_rumble[player])
         return;
-    s_rumble = on;
-    WPAD_Rumble(WPAD_CHAN_0, on ? 1 : 0);
+    s_rumble[player] = on;
+    WPAD_Rumble(player == 0 ? WPAD_CHAN_0 : WPAD_CHAN_1, on ? 1 : 0);
 }

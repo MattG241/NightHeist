@@ -14,7 +14,9 @@ typedef enum NhTexFormat {
     NH_TF_I8 = 0x1,
     NH_TF_IA8 = 0x3,
     NH_TF_RGB565 = 0x4,
+    NH_TF_RGB5A3 = 0x5,
     NH_TF_RGBA8 = 0x6,
+    NH_TF_CMPR = 0xE, /* GX's DXT1 variant: 8x8 tiles of four 4x4 blocks; decode only here */
 } NhTexFormat;
 
 #define NH_TEX_MAX_LEVELS 11 /* 1024 -> 1 */
@@ -23,7 +25,8 @@ size_t nh_tex_level_size(NhTexFormat fmt, int w, int h);
 size_t nh_tex_total_size(NhTexFormat fmt, int w, int h, int levels);
 int nh_tex_max_levels(int w, int h);
 
-/* Encode one RGBA8 level (row-major, 4 bytes/pixel) into GX tiled layout. */
+/* Encode one RGBA8 level (row-major, 4 bytes/pixel) into GX tiled layout.
+ * CMPR is encoded offline by tools/nhconv.py; here it is a no-op. */
 void nh_tex_encode(NhTexFormat fmt, const uint8_t *rgba, int w, int h, uint8_t *out);
 /* Decode one GX tiled level back to RGBA8. */
 void nh_tex_decode(NhTexFormat fmt, const uint8_t *in, int w, int h, uint8_t *rgba);

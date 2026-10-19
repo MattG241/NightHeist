@@ -70,5 +70,43 @@ bool nh_m34_inverse(NhMat34 *out, const NhMat34 *in);
 bool nh_m34_normal_matrix(NhMat34 *out, const NhMat34 *in);
 NhVec3 nh_m34_mul_point(const NhMat34 *m, NhVec3 p);
 NhVec3 nh_m34_mul_dir(const NhMat34 *m, NhVec3 d);
+NhVec3 nh_m34_get_pos(const NhMat34 *m);
+/* Rotation about Y by yaw, then X by pitch (yaw 0 faces -Z), then translate. */
+void nh_m34_from_yaw_pitch(NhMat34 *out, NhVec3 pos, float yaw, float pitch);
+/* Direction a yaw/pitch pair faces (yaw 0, pitch 0 = -Z). */
+NhVec3 nh_dir_from_yaw_pitch(float yaw, float pitch);
+
+static inline NhVec2 nh_v2(float x, float y)
+{
+    NhVec2 v = { x, y };
+    return v;
+}
+static inline float nh_v2_dot(NhVec2 a, NhVec2 b) { return a.x * b.x + a.y * b.y; }
+float nh_v2_len(NhVec2 a);
+float nh_v3_dist(NhVec3 a, NhVec3 b);
+float nh_v3_dist_xz(NhVec3 a, NhVec3 b);
+float nh_approach(float cur, float target, float max_step);
+float nh_angle_approach(float cur, float target, float max_step);
+float nh_smoothstep(float e0, float e1, float x);
+
+/* ---- quaternions (x, y, z, w) ------------------------------------------- */
+
+typedef struct NhQuat {
+    float x, y, z, w;
+} NhQuat;
+
+static inline NhQuat nh_quat_identity(void)
+{
+    NhQuat q = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return q;
+}
+NhQuat nh_quat_axis_angle(NhVec3 axis, float rad);
+NhQuat nh_quat_mul(NhQuat a, NhQuat b);
+NhQuat nh_quat_norm(NhQuat q);
+/* Normalised lerp along the shortest arc; good enough for animation blends. */
+NhQuat nh_quat_nlerp(NhQuat a, NhQuat b, float t);
+NhQuat nh_quat_euler(float pitch_x, float yaw_y, float roll_z); /* applied Y, X, Z */
+void nh_m34_from_quat_pos(NhMat34 *out, NhQuat q, NhVec3 pos);
+NhVec3 nh_quat_rotate(NhQuat q, NhVec3 v);
 
 #endif

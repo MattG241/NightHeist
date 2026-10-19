@@ -15,7 +15,27 @@ int nh_test_checks;
     X(test_texconv)            \
     X(test_meshgen)            \
     X(test_font)               \
-    X(test_demo_sim)
+    X(test_level)              \
+    X(test_kit)                \
+    X(test_portals)            \
+    X(test_bake)               \
+    X(test_player)             \
+    X(test_assets)             \
+    X(test_nav)                \
+    X(test_detection)          \
+    X(test_ai)                 \
+    X(test_ai_coop)            \
+    X(test_gen_determinism)    \
+    X(test_gen_distinct)       \
+    X(test_gen_nav)            \
+    X(test_minigames)          \
+    X(test_job)                \
+    X(test_security)           \
+    X(test_save)               \
+    X(test_board)              \
+    X(test_economy)            \
+    X(test_synth)              \
+    X(test_gen_solvable)
 
 #define X(name) void name(void);
 TESTS(X)

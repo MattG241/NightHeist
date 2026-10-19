@@ -188,7 +188,7 @@ stops turning. This is already implemented in the Phase 0 sim.
 |---|---|
 | Projected-texture torch | Feasible: texgen from position plus TEV is standard GX practice. Fill rate is the risk; measure in Phase 2. |
 | Baked vertex lighting at load | Feasible if raycasts use the grid rather than triangles (see 4.4). |
-| Skeletal guards (~30 bones) | GX has 10 position matrices per draw; meshes get split by bone palette, or CPU skinning is used. Both will be measured in Phase 3. |
+| Skeletal guards | Done in Phase 3 with rigid skinning: 11-bone guard, 7-bone dog, each model part draws with at most 10 bones through the GX `PTNMTXIDX` matrix palette, so no CPU skinning. Six guards plus the level hold 59.9 fps in Dolphin. |
 | Thermal goggles (elite guards, player gadget) | Feasible: render a heat pass with TEV colour remapping, no shaders needed. |
 | 3D audio with wall attenuation | ASND gives per-voice volume and pan; occlusion is computed on the CPU from the room graph. |
 | Wii Remote speaker | Stretch goal only. |
@@ -199,6 +199,737 @@ stops turning. This is already implemented in the Phase 0 sim.
   MEM1/MEM2 free, input state, SD status.
 - Desktop `--autotest --frames N --screenshot` runs give reproducible smoke
   tests.
-- Coming next: the full debug overlay (Phase 1), AI debug views (Phase 3),
-  a top-down seed map renderer (Phase 4), and opt-in playtest logging to SD
-  (Phase 8).
+- Debug overlay (1): fps, CPU/GPU ms, triangles, draws, visible rooms,
+  geometry/texture/resource MB, arena use, MEM2 free, seed, build time,
+  position, room, light level, and one line per guard (archetype, state,
+  suspicion, visibility, awareness, floor, torch).
+- AI view (2, press again for thermal): view cones and nav paths drawn on the
+  floor, last-known-position markers, and state labels over every guard.
+- `debug_start.txt` next to `boot.dol` (Wii) or `--start x,y,z,yaw,pitch`
+  (desktop) spawns the player anywhere.
+- Coming next: a top-down seed map renderer (Phase 4) and opt-in playtest
+  logging to SD (Phase 8).
+
+## 9. Guards (Phase 3)
+
+The simulation is pure C in `src/core/nh_ai.c` and `nh_nav.c`. It has no
+platform calls and is deterministic: the same seed and the same inputs give
+the same guard positions on Wii and desktop (unit-tested).
+
+**Navigation.** A 1 m grid (2×2 nodes per cell) per floor is built from the
+level. Walls, windows and rails block movement; furniture lower than 1.5 m
+blocks the nodes it covers. Doors are passable (guards open them) at a small
+cost, and locked doors at a large one. Stair ramps link to the floor above.
+Paths come from A* with a binary heap, then string-pulling, and keep a
+waypoint either side of each doorway so guards walk through door centres. An
+LRU cache holds 24 recent paths. Dogs path with doors closed.
+
+**Perception.** Each guard thinks every other tick (staggered).
+- *Sight.* Range is `view_range × (0.22 + 0.78 × light)`, with 12 m minimum
+  for thermal goggles. The field of view is plus 35° of peripheral vision
+  within 5 m. Three raycasts (head, chest, feet) give the fraction of the
+  player that is visible.
+- *Suspicion gain per second.* The visible fraction is multiplied by:
+  - distance falloff `1 − (d/range)²`;
+  - a light term;
+  - stance (crouched 0.6);
+  - motion (still 0.6, walking 1.0, running 1.6);
+  - archetype gain;
+  - awareness;
+  - difficulty;
+  - ×2.5 within 2.5 m.
+- *Light on the player* is the baked light meter plus their own torch, plus
+  any guard torch whose beam falls on them, so walking into a beam is
+  dangerous.
+- *The player's torch beam* hitting a surface in a guard's view raises
+  suspicion even when the player is out of sight.
+- *Hearing.* Noise radius × hearing × 0.45 for each blocker (wall, closed
+  door, closed window, or two per floor). Sound gives only an approximate
+  direction.
+- *Changes noticed.* Doors left open, missing loot, bodies, dead cameras,
+  lights off, broken glass and open vents are added by the game as
+  anomalies. Each guard reacts to each anomaly once.
+
+**States.** The thresholds are 0.3 SUSPICIOUS (stop and turn), 0.65
+INVESTIGATE (walk over) and 1.0 ALERT (chase, radio after 1.5 s).
+- *Losing the player* turns ALERT into SEARCH. Search points are:
+  - the last known position;
+  - hiding spots within 2.2 m of it (and within 9 m for archetypes that check
+    hiding places);
+  - random points in that room and the rooms one or two doors away, visited
+    nearest-first.
+- *After the search time* the guard returns to the route. Awareness rises
+  with each alert and makes the guard faster to notice next time.
+- *Radio calls* send the two nearest guards running and the rest walking.
+  Elite and police guards flank 4 m to either side.
+- *The building alarm* trips after `alarm_threshold` alerts.
+- *Caught* is ALERT, in sight, within 1.3 m.
+
+**Archetypes** (`nh_ai_arch`):
+- *Rookie:* distractible, slow to suspect.
+- *Guard:* the standard.
+- *Veteran:* checks hiding spots, searches for longer.
+- *Lazy:* skips patrol points, naps, carries no torch.
+- *Handler and dog:* the dog follows the handler, smells you within 6 m (3 m
+  under a door), barks, and brings the handler over. It can't open doors.
+- *Camera operator:* stays at the console.
+- *Supervisor:* radio check-ins. A knocked-out guard who misses one triggers
+  a search and counts as an alert.
+- *Elite:* thermal vision, flanking.
+- *Janitor (civilian):* flees to the nearest guard to report you.
+- *Police:* arrive after the alarm (Phase 6).
+
+**Player interactions so far.**
+- *Takedown (A)* from behind or on an unaware or sleeping guard. It is noisy
+  (4.5 m) and leaves a body anomaly.
+- *Opening a door* adds a door anomaly; a guard who investigates closes the
+  door again.
+- *Distractions:* `ai_distraction` sends guards to a spot to look around,
+  with little suspicion.
+- *Scripted events:* `ai_send_guard` moves one guard somewhere.
+
+**Presentation** (`src/game/guards.c`).
+- *Animation.* Clips are chosen from the AI state, cross-faded over 0.25 s,
+  with locomotion playback scaled to the actual speed. A head turn is layered
+  on top for looking around.
+- *Torches.* The nearest lit guard torch gets the second projected cookie
+  (TEV `ALPHA1` path); up to four more become per-vertex spot lights, and
+  every lens gets a camera-facing glow.
+- *Lighting.* Characters use `GFX_MAT_VCOLOR`: vertex colour as albedo, lit
+  by ambient plus dynamic lights. On GX this is only the channel's material
+  source set to the vertex.
+- *HUD.*
+  - A pip on a ring around the cursor for every guard who is getting
+    suspicious, pointing their way and filling with suspicion.
+  - "?" or "!" over guards in view.
+  - Bark subtitles within 16 m.
+  - "ALARM" and "CAUGHT" screens.
+  - A heartbeat rumble that speeds up from 0.45 suspicion upwards.
+
+
+## 10. Procedural buildings (Phase 4)
+
+Code: `src/core/nh_gen.c` (layout), `nh_gen_dress.c` (furniture and set
+pieces), `nh_gen_sec.c` (security, loot, guards).
+`nh_gen_building(Level*, NhGenParams*, NhPlan*)` fills the level and a
+**plan** for the heist:
+- the entities: loot and the objective, keycards, code notes, keypads,
+  cameras, lasers, alarm panels, fuse boxes, consoles, safes, terminals,
+  phones, the ladder and the hatch;
+- guard rosters with patrol routes;
+- the entry points and the extraction point.
+
+**Determinism.** Every decision is integer maths on PCG32, and floats only
+appear as outputs. The same seed gives the same building on Wii and desktop:
+office medium #7 gives fingerprint `D667D5CA` in Dolphin and on desktop.
+`tests/gen_golden.inc` pins 15 layouts.
+
+**Footprint.** Five types in three sizes, with ±2 cells of variation:
+
+| Type | Storeys (S/M/L) | Plan |
+|---|---|---|
+| Warehouse | 1/1/2 | Racking hall. An office block on the left, right or along the front. Loading bays (1–3, 2–4 cells deep). An optional row of cages and an optional hall partition. |
+| Office | 2/3/4 | Corridor spine with strips of rooms either side; a cross corridor in large buildings. |
+| Bank | 2/2/3 | Spine with deep back strips, so vaults sit behind antechambers. |
+| Mansion | 2/2/3 | A grand hall from the front door to the stairs; rooms from a BSP split, joined to the hall and to each other. |
+| Museum | 1/2/2 | Spine of galleries, with neighbouring galleries joined by arches. |
+
+**Stairs.** The stairwell is 3 cells wide. Even floors climb in the left
+column, odd floors climb back in the right column, and the centre column is
+a walkway that stays connected on every floor. A 2-wide switchback would
+strand one end of the room on alternate floors, because each flight climbs a
+whole storey.
+
+**Functions.** Each type has a list of needs: function, floor, size range,
+front/back/exterior preference, count per size, and the security level it
+wants. The rest of the rooms get filler functions.
+
+**Set pieces.** There are 44 hand-designed layouts (`k_setpieces`), for
+example:
+- gold vault with lasers;
+- server farm with a hackable terminal;
+- the diamond on a pedestal inside a laser cage;
+- master bedroom with a safe;
+- bonded cage;
+- security hub with consoles.
+
+Secure rooms get one first. Ordinary rooms get one 70% of the time, and a
+piece is not repeated in a building unless it is marked as repeatable.
+`avoid_setpieces` (the campaign's recent history) is preferred against, and
+ordinary rooms fall back to plain furniture rather than repeating a stale
+piece.
+
+**Furniture.**
+- Props snap to a 0.5 m occupancy grid. Doorways (1.2 × 1.25 m), stairs,
+  vent grates and the hatch are kept clear, and tall furniture never covers
+  a window.
+- After a room is dressed, its 1 m nav nodes are checked with the same
+  blocking test the guards' nav grid uses. Every doorway, arch and grate must
+  connect, and at most 2 free nodes may be cut off.
+- If the check fails, the room is rolled back and re-dressed: a second try,
+  then default furniture, then a light dressing.
+
+**Security.**
+- *Exterior doors* take a lockpick; they are harder at higher security and
+  alarmed from security 2.
+- *Secure rooms* get keycard, code, maglock (cut the security fuse) or vault
+  (card plus code) locks. Arches into them become doors so a lock can't be
+  walked around.
+- *Keys are placed constructively.* Locks are processed shallowest first.
+  Each key goes in a room reachable with that lock still closed and only the
+  keys placed so far, preferring desks in offices, security rooms and locker
+  rooms. So every building is solvable by construction.
+- *Cameras* go in the corners of corridors, lobbies and secure rooms.
+- *Fuse boxes:* one per floor for the lights, plus the security circuit.
+- *Alarm panel* by the front door.
+- *Vents:* straight ducts lead from an ordinary room into a secure one.
+
+**Validation.** `nh_gen_validate` is an independent fixpoint search over
+rooms. It starts outside and crosses doors, arches, stairs and vents using
+the keys collected so far. It requires every room, the objective and an
+extraction point to be reachable; on failure the generator retries with the
+next attempt. `avoid_layouts` (recent fingerprints) are never returned.
+
+**Guards.**
+- *Rosters* are per type: dog handlers at warehouses and mansions, camera
+  operators at banks, offices and museums, janitors in offices and museums,
+  elites at high security.
+- *Count:* 3, 5 or 7 by size, plus security/2, plus extras, up to 14.
+- *Stations:* camera operators sit at the console. Veterans may be posted
+  outside the objective's door. Handlers walk the perimeter with the dog.
+- *Patrols* are loops through 3–6 rooms of one floor, always through its
+  corridor, with actions by room (coffee in break rooms, a smoke outside).
+  Lazy guards get a nap.
+
+**Tools.**
+- `make seedmap` builds `build/seedmap`. It renders a building, or a sheet of
+  seeds, as a top-down PNG showing rooms, locks by colour, keys, loot, the
+  objective, cameras, lasers, vents and patrol loops.
+- In game, with the debug overlay on (1), + regenerates with a new seed and
+  − cycles the building type.
+- Desktop `--job TYPE,SIZE,SEED[,SEC]` or `--test-level` picks the job; on
+  Wii, a `job ...` line in `debug_start.txt` does the same.
+
+## 11. Heist systems (Phases 5–6)
+
+The pure logic lives in core and is unit-tested:
+- `nh_job.c`: objectives, inventory, gadgets, stats, the alarm and police
+  clock, and the rating.
+- `nh_minigame.c`: lockpick, safecrack and hack.
+- `nh_security.c`: cameras, lasers, alarmed doors, power and EMP.
+
+The game layer is `interact.c`, `gadgets.c`, `heist.c` and `hud.c`.
+
+**Interaction (C).**
+- *Targeting.* Everything within 2.3 m along the aim (the torch direction)
+  is scored and the best target wins. Line of sight is required. Small
+  items win ties.
+- *Timed actions.* Some actions need C held: swipe 0.5 s, keypad 1 s,
+  carry heavy loot 1.2 s, cut the power 2 s, disarm the alarm 3 s, vault
+  4 s. C must be released before the next action can start.
+
+| Target | Action |
+|---|---|
+| Doors | Open/close. Pick (lockpick minigame); swipe a keycard; enter a known code; maglocks open when the security circuit is cut; the vault needs card + code. Opening an alarmed exterior door starts a 15 s entry delay: disarm at the panel inside or the alarm sounds. |
+| Loot | Small items go in the bag (12 slots). Heavy items (gold, paintings, statues, the crate) are carried in your hands at 60% speed and only count at the van. Items in display cases trip the alarm unless the security power is off. Taking loot leaves a "missing" anomaly for guards. |
+| Keycards, code notes | Picked up into the inventory. |
+| Safes | Safecrack minigame, or the drill gadget: 18 s, loud. Contents become takeable. |
+| Terminals | Hack minigame. Success completes hack/wipe objectives and downloads every keypad code; running out of time traces you and guards converge. |
+| Security console | Loop the camera feeds for 2 minutes. |
+| Fuse boxes | Cut or restore a lighting circuit or the security circuit. Rooms re-light one per tick. A guard who reaches a cut box restores it after 2.5 s. |
+| Alarm panel | Disarm the door alarms. |
+| Phones | Plant a bug (objective). |
+| Hiding spots | Lockers, wardrobes, stalls, dumpsters, and desks when crouched. Guards can't see you, but a veteran checking that spot pulls you out. |
+| Bodies | Pick up (carried behind you, slow), put down, or hide in a locker, wardrobe or dumpster, which removes the body anomaly. |
+| Vents, ladder, roof hatch | Climb through the building's alternative routes. |
+| The van | Leave: success with the target, otherwise a partial/abort. |
+
+**Gadgets (D-pad to choose, A to use).** There are 14:
+
+| Gadget | Effect |
+|---|---|
+| Lockpicks | Always carried. |
+| Coins | Thrown: a small distraction. |
+| Noisemaker | Thrown: beeps for 9 s, drawing guards from 16 m. |
+| Smoke | Thrown: a cloud that blocks guard and camera sight for 16 s. |
+| EMP | Thrown: cameras and lasers within 7 m dead for 15 s. |
+| Taser | Knocks out up close, noisily. |
+| Dart gun | Silent; the guard drops after 3.5 s and may bark first. |
+| Jammer | Blinds a camera for 20 s. |
+| Glass cutter | Cuts a window open quietly. Guards notice the cut glass. |
+| Card cloner | Copies keycards from an unaware guard: level 1–3 by rank. |
+| Thermal goggles | D-pad up toggles them; 90 s battery. Warm guards drawn through walls with `GFX_MAT_XRAY`. |
+| Laser mirror | Bends one laser beam out of the way. |
+| Safe drill | Drills a safe open: 18 s, loud. |
+| Phone dialer | Rings a desk phone to pull a guard over. |
+
+**Minigames.**
+- *Lockpick:* twist the Wii Remote to each pin's sweet spot. The feel meter
+  and rumble ticks show how close you are; A sets the pin. A slip makes
+  noise and costs 0.6 s.
+- *Safecrack:* the twist angle sets the dial speed, alternating direction
+  for each number. Stop on the clunk and press A.
+- *Hack:* the pointer matches a signal's frequency (x) and amplitude (y);
+  hold the match to fill each layer before the trace timer runs out.
+
+**Security.**
+- *Cameras* sweep ±40° over 12 s. Their detection fills faster with light,
+  closeness and movement.
+- When a camera fills, what happens depends on the operator:
+  - with an operator at the console, the two nearest guards converge on you
+    and it counts as an alert;
+  - with no operator, the camera only records, except at security 3+, where
+    it raises the alarm.
+- *Lasers* trip the alarm if the beam passes within 0.28 m of the player's
+  capsule (crouching changes its height).
+
+**Alarm and police.**
+- The alarm starts a police clock of 100 − 12×security seconds.
+- Three police officers then arrive at the street entry and sweep from your
+  last known position; two more come every 45 s.
+- Being caught is a bust.
+
+**Objectives and rating.** Each job has the main target plus 1–2 optional
+objectives drawn from what the building holds, and one conduct objective:
+
+| Kind | Objectives |
+|---|---|
+| Main | Steal (the target) |
+| Optional | hack, wipe, safe, photograph, bug |
+| Conduct | ghost, no alarm, no takedowns, a loot target, out within 8 minutes |
+
+- *Stealth score:* starts at 100.
+  - −12 per time spotted by a guard;
+  - −8 per camera spot;
+  - −25 per alarm;
+  - −10 per body found;
+  - −4 per takedown;
+  - +10 for a clean ghost.
+- *Grade:* S, A, B, C or D, from stealth and objectives done. It scales the
+  payout from 80% to 120%.
+- *Heat:* rises with alarms, sightings and bodies; it is 0 for a ghost.
+- *Results:* a bust pays nothing. Leaving without the target pays no
+  bonuses, so walking straight back to the van earns nothing.
+
+**Screens.**
+- \+ opens the floor map, showing only rooms you've seen: explored rooms,
+  walls, doors (red when locked), objective markers and the van.
+- − opens the objectives, bag, stats and gadgets.
+- The summary shows the outcome, objectives, loot, bonuses, payout, grade,
+  stealth and heat. A takes the next job; B retries.
+
+## 12. Campaign and safehouse (Phases 7–8)
+
+The pure logic lives in core and is unit-tested:
+- `nh_campaign.c`: districts, the job board, crew, upgrades, the fence,
+  heat, payday and the unlock schedule.
+- `nh_save.c`: save files.
+
+The safehouse UI is `src/game/hideout.c`. `app.c` switches between the
+safehouse and a heist.
+
+**Money.** Amounts are stored in units of $10 so they fit comfortably in
+32 bits. A new career starts with $20,000, the Driver and the Hacker.
+
+**Districts.**
+
+| District | Opens at | Buildings | Base security | Pay |
+|---|---|---|---|---|
+| The Docklands | start | warehouse, office | 0 | ×1.00 |
+| Midtown | 70 rep + Docklands finale | office, bank | 1 | ×1.35 |
+| The Old Quarter | 190 rep + Midtown finale | museum, mansion | 2 | ×1.70 |
+| The Heights | 340 rep + Old Quarter finale | bank, mansion, museum | 3 | ×2.20 |
+
+**Job board.**
+- Four offers, mostly from the newest open district. About 35% come from
+  older districts once more than one is open.
+- An offer has a seed, building type, size and security, with security
+  raised by 1 for every 34 heat.
+- It has 0–3 modifiers from those unlocked so far; contradictory pairs are
+  skipped.
+- It has an estimated payout, from typical generator loot totals × the
+  district multiplier × (1 + 15% per security level).
+- Size grows with the jobs done in that district: mostly small at first,
+  then medium and large.
+- After 5 jobs in the newest district a **finale** is offered. It is large,
+  +1 security, carries the *bonus target* modifier and pays double.
+  Finishing it completes the district.
+- A **loyalty job** is offered for a hired crew member with loyalty ≥ 60.
+  It is a medium building of their story type, and finishing it unlocks
+  their second perk.
+- The **plan screen** shows the modifiers with their descriptions. The
+  player picks up to two hired crew to bring.
+
+**Crew.**
+
+| Member | Role | Perk | Flaw | Cut | Hire |
+|---|---|---|---|---|---|
+| Nadia Volkova | Hacker | Hacks one layer shorter; one keypad code known | — | 18% | start |
+| Eddie Price | Locksmith | One pin fewer | Noisier slips | 14% | 40 rep |
+| Rosa Delgado | Driver | Police +30 s | +5 heat per job | 12% | start |
+| Big Tam | Muscle | Silent takedowns; faster carrying | Bodies found sooner | 12% | 90 rep |
+| Kit Mercer | Lookout | Guards and cameras on the map | One fewer bag slot | 10% | 130 rep |
+| Oscar Bell | Face | Fence pays 15% more | — | 20% | 220 rep |
+
+Second perks:
+- Hacker: every code known.
+- Locksmith: +1 drill charge.
+- Driver: police +60 s.
+- Muscle: +2 taser charges.
+- Lookout and Face keep their perks.
+
+Hiring costs `$30,000 + rep × $600`. Each job a member comes on adds 12
+loyalty, or 20 on an A or S grade.
+
+**Upgrades.** Eight lines with 16 levels in total, from $25k to $320k:
+torch, bag, soft soles, picks, gadget kit, thermal cells, fast darts and the
+scanner. Thermal cells and fast darts are offered only once their gadget is
+in the kit.
+
+**Payday.**
+- The take is the loot banked plus bonuses, scaled by grade.
+- Net pay is the take minus the crew's cut, plus any **loot set** bonus.
+  The fence pays for five collections: old masters, crown jewels, watches,
+  data and bullion, with 3–4 pieces each and bonuses of $100k–$200k.
+- Reputation by grade: S +25, A +18, B +12, C +8, D +4. A bust costs 10.
+  A ghost adds 5, a finale adds 30, and a partial take with loot earns 3.
+- Heat rises by 5 × the job's heat in that district and falls by 6
+  everywhere else. Lying low costs `$25,000 + rep × $100` and cools every
+  district by 35.
+
+**Unlock schedule.**
+- A new career has lockpicks, coins and the taser.
+- Every other gadget and modifier arrives at a fixed career step (jobs
+  finished or failed): `k_gadget_at` and `k_mod_at`.
+- Payday announces each arrival.
+- Over steps 1–30 no two consecutive steps go without one. `PACING.md`
+  lays this out against play time.
+
+**Post-game.**
+- Finishing the Heights finale unlocks the post-game.
+- Every gadget and modifier is available.
+- Every contract gets +1 security and +1 modifier, and the board keeps
+  coming.
+
+**Anti-staleness.**
+- The last 24 layout fingerprints are passed to the generator, which
+  rerolls any repeat.
+- Set pieces used in the last 3 jobs are avoided.
+
+**Saves.**
+- `save.dat` in the app folder, holding settings and the campaign.
+- Header: `'NHSV'`, u16 version, u16 reserved (must be 0), u32 payload
+  length, CRC-32 of the payload.
+- The payload is big-endian and written field by field, so the same bytes
+  load on Wii and desktop.
+- Decoding range-checks every field and rejects:
+  - a newer version;
+  - a bad magic or a non-zero reserved field;
+  - truncation;
+  - a checksum mismatch.
+- Before writing, a valid previous save is copied to `save.bak`. Loading
+  falls back to the backup if the main file fails.
+- The game saves after every payday, purchase, hire or settings change.
+
+**Playtest log.** An opt-in setting appends one CSV row per job to
+`playlog.csv`: career step, district, type, size, security, modifiers,
+outcome, grade, seconds, sightings, alarms, takedowns, payout, net, money and
+reputation. It is how `PACING.md`'s
+measured column gets filled.
+
+**Safehouse UI.**
+- Tabs: JOBS, CREW, GEAR, FENCE and SETTINGS.
+- Driven by the IR pointer (A to click) or the D-pad (with A). B backs out
+  of the plan screen.
+- Settings cover pointer smoothing, the turn box, turn speed, crouch
+  toggle, invert, rumble, subtitles, music and SFX volume, difficulty and
+  the playtest log.
+
+## 13. Audio and presentation (Phases 9–10)
+
+**Synthesis (`nh_synth.c`).** No audio files ship. At boot the game
+renders the following at 22,050 Hz mono:
+
+- 70 sound effects;
+- the heist theme in 4 stems;
+- the safehouse theme in 2 stems.
+
+Rendering takes about 0.3 s on desktop, produces 5 MB, and runs behind a
+"tuning up..." screen.
+
+How a sound is built:
+
+- Each effect is a recipe of notes. A note has an oscillator (sine,
+  triangle, saw, square or noise) and an ADSR envelope.
+- Each note can also have:
+  - an exponential pitch glide;
+  - a pair of swept one-pole low-passes;
+  - a high-pass;
+  - a TPT state-variable band-pass;
+  - tanh drive;
+  - detune, vibrato and tremolo.
+- Footsteps use one recipe per surface. Voices are a saw through two
+  formant band-passes.
+- The police siren is a phase-integrated sweep whose cycles close exactly
+  at the loop point.
+
+Looping:
+
+- Looping effects and music stems render with their tails wrapped onto the
+  start, so the loop is seamless.
+- Held tones in loops use whole cycles per loop.
+- Lengths are multiples of 16 samples, the 32-byte granularity ASND needs.
+
+Tests check that every effect and stem:
+
+- reaches its level and isn't silent;
+- is deterministic;
+- ends at zero (one-shots);
+- has no seam larger than its largest sample step (loops).
+
+`make audiodump` writes everything as WAV.
+
+**Music.**
+
+| Theme | Tempo and key | Stems |
+|---|---|---|
+| Heist | 96 BPM, D minor (i–VI–iv–V) | ambient (pad, drone, bells), pulse (bass eighths, hats), tension (sixteenth arpeggios, kick), action (full kit, driven bass, stabs) |
+| Safehouse | 84 BPM lounge (Dm7–G7–Cmaj7–A7) | electric piano and walking bass; brushes and crackle |
+
+All stems of a theme start together inside `plat_audio_begin`/`end`. That
+is an audio-lock on SDL and IRQs off on the Wii, so they never drift. They
+fade towards target levels: in over about 2 s, out over about 4 s.
+
+In a heist the stem targets come from:
+
+| Stem | Plays when |
+|---|---|
+| Ambient | Always |
+| Pulse | Suspicion is above 0.2, a minigame is running, or a guard is hunting |
+| Tension | A guard is investigating, alert or searching, or suspicion is above 0.6 |
+| Action | The alarm is up or you are caught (ambient drops to 40%) |
+
+The title screen plays the piano stem alone, and the safehouse adds the
+brushes.
+
+**Positional audio (`audio.c`).**
+- Effects in the world fall off with `(1 − d/range)²`.
+- They are muffled to 45% when a wall or closed door blocks the line from
+  the listener (a level raycast), and to 35% on another floor.
+- They are panned by bearing, with a ±6% random pitch.
+- Looping sources follow their position every tick: noisemakers, the drill
+  and a ringing phone.
+- The alarm bell and the sirens are flat. The sirens fade in over the last
+  30 s before the police arrive.
+- Guard footsteps are played from distance walked (0.75 m per stride, 0.45 m
+  for dogs) on the surface under them, so you hear patrols before you see
+  them.
+
+Voice budget is the 16 hardware voices: 4 music, up to 12 loops, and the
+rest for one-shots.
+
+**Title screen.**
+- A procedural night skyline: two layers of towers with lit windows that
+  come and go, masts with blinking lights, a moon, a sweeping searchlight
+  and street lamps.
+- Menu: CONTINUE (with a career summary), NEW CAREER (asks before
+  overwriting), CONTROLS and QUIT.
+- HOME in the safehouse returns here.
+
+**Pause.** HOME during a job opens RESUME, CONTROLS and ABANDON THE JOB.
+- Abandoning asks first. It ends the job as *walked away*: no pay, no
+  loot-set progress, no loyalty and no career step, but the heat stays.
+  Without these rules, walking away would be a free way to unlock things.
+
+**Performance and memory (Wii, Dolphin), worst case: a large bank at
+security 3.**
+- 59.9 fps, 2.6 ms CPU per frame.
+- 41k triangles in 89 draws.
+- Generation, build and bake take 7.3 s, behind a loading screen.
+
+| Memory | Use |
+|---|---|
+| Persistent arena | 2.3 of 4 MB |
+| Level arena | 5.6 of 12 MB |
+| Scratch | 6.6 of 10 MB |
+| Level geometry | 6.9 MB |
+| Audio bank | 5 MB, from the heap |
+
+About 31 MB of MEM2 is still free.
+
+## 14. Local co-op
+
+Two players, split screen, in the same campaign and on the same jobs.
+
+**Starting a co-op job.**
+- On the plan screen the D-pad picks 1 or 2 players. The option is offered
+  only while Wii Remote 2 is connected with a Nunchuk.
+- `heist_start(..., players, ...)` builds one job for both. Player 2 starts
+  0.9 m to the right of player 1.
+
+**Input.**
+- `plat_input_poll(player, ...)` reads WPAD channel 0 and 1 on the Wii.
+  The scan runs once per frame, on player 0's poll.
+- On desktop, player 2 is a gamepad, or `p2` lines in a script.
+- Rumble is per remote.
+
+**State.**
+- Everything that belongs to one player lives in `HeistPlayer`: the body,
+  torch, battery, light level, status line, action and hold, minigame,
+  hiding spot, selected gadget, hands (heavy loot or a body), thermal,
+  map view, AI view, and cuffed state.
+- `h->me` points at the player being updated or drawn, so the
+  interaction, gadget and HUD code is unchanged.
+- The world, guards, security, job, gadget charges, keycards, codes and
+  the bag (cap ×1.5) are shared.
+
+**Tick order.**
+1. Each player's input in turn: their map, moving, the torch,
+   interactions, gadget use and takedowns.
+2. The world, once: projectiles and the drill.
+3. Both AI views.
+4. `ai_tick_views`, then the events, each routed to the player it
+   concerns.
+5. Security, the job clock, and doors and lights.
+6. Each player's after-step: being caught or cuffed, heartbeat, rumble,
+   torch battery and aim, and light level.
+7. Audio.
+
+With one player and their map open, the whole game pauses, as before. In
+co-op the world carries on and that player stands still.
+
+**Guards (`nh_ai`).** `ai_tick_views(w, views, n)`:
+- Each guard keeps a `target`. On its perception ticks it switches to the
+  player it sees best. While alert or searching with nobody in sight, it
+  keeps its quarry. Otherwise it watches the nearest player who isn't
+  cuffed.
+- Torch beams and noises from every player are checked by every guard.
+- Hiding-spot checks look at both players.
+- `EV_CAUGHT` and `EV_FOUND_HIDING` carry the player index.
+- `caught_mask` stops a player being caught twice.
+- `ai_release_caught` clears a player's catch when their partner frees
+  them.
+- With one view, every result is identical to `ai_tick`, and a test
+  checks this.
+
+Cameras and lasers (`sec_tick_views`) take the most detected player per
+camera, and any player who crosses a beam.
+
+**Caught in co-op.**
+- The usual 2.5 s "caught" sequence plays.
+- The player then drops what they were carrying and is **cuffed** in
+  place.
+- Cuffed players are invisible to guards and cameras, and the alarm goes
+  up.
+- The partner frees them with a 2 s hold on C. The van won't leave while a
+  partner is cuffed.
+- If both are cuffed, or a partner stays cuffed for 90 s, the job is
+  busted.
+
+**Rendering.**
+- `gfx_set_viewport` gives each player a 640×240 view (player 1 on top),
+  and the projection uses the view's aspect.
+- Pending world-space quads are flushed at each viewport change, so
+  sprites stay in their own view.
+- `gfx_set_2d_region` maps each player's 640×480 HUD into their half (y
+  scale 0.5). Small text is drawn twice as tall there so it stays
+  readable.
+- The pause and summary screens are drawn once over the whole screen.
+- Each player sees the other as the guard model in dark clothes, animated
+  idle, walk or run, or sitting when cuffed. The partner's torch is one of
+  the per-vertex spot lights.
+- Positioned sounds play as loud as the nearer player hears them, panned
+  less because both players share one TV.
+
+**Performance on Wii** (Dolphin, large bank at security 3, both views
+outside): 59.9 fps, 5.3 ms CPU, 81k triangles in 155 draws.
+
+## 15. Controls and guidance (from the first Wii playtest)
+
+The first real-hardware playtest found three problems.
+
+**Movement.**
+- Holding the stick past 90% used to start a sprint. On a Nunchuk that
+  happens all the time, so players were sprinting (and making noise)
+  without meaning to.
+- Some Nunchuks (especially third-party ones) report nonsense stick
+  calibration, so one player ran on their own.
+
+Fixes:
+- Running is now only while D-pad down is held.
+- Stick calibration is sanity-checked. A bad one is replaced by standard
+  values centred on where the stick rested when the Nunchuk was plugged in.
+- The dead zone is now 0.2.
+- Starts and stops ease over about 0.15 s.
+
+**Turning.** The default scheme is now **Simple**:
+- The stick's left and right axis turns the player. The turn rate is eased
+  (rate ≈ 0.35·t + 0.65·t·|t| of the turn speed, approached at 9 rad/s²),
+  so small pushes give fine turns and turning glides to a stop.
+- The pointer only aims the torch and pitches the view at the top or
+  bottom edge. With no pointer the view levels out.
+- The classic pointer-edge turning is still available as **Pointer**.
+- The scheme is saved with the settings, which made this save format
+  version 2. Version-1 saves still load, and a test checks it.
+
+**Clarity (`guide.c`).**
+- **Briefing:** a card before each campaign job showing the goal, the bonus
+  objectives, a four-step "how" and the controls for the current scheme.
+- **GO line:** always at the top left. It shows the current goal and the
+  distance, with "up/down to floor N" when the goal is on another floor.
+  The goal is the main objective, then "Get back to the van" once the
+  target is done or in hand. In co-op it shows "Free your partner" while
+  one of you is cuffed.
+- **Route marker:**
+  - `nh_nav_path` from the player to the goal is worked out twice a
+    second, and the marker sits over the next corner of the route.
+  - Off screen, a side arrow points the way, or "TURN AROUND" when the
+    route is behind you.
+- **Tips:** one-time tips for the marker, guards, locks, being noticed,
+  cameras, getting the target, standing in light, and hiding. Which tips
+  have been seen is saved in the campaign.
+- **Leave prompt:** "Leave" at the van is offered only after you've moved
+  away from it once (or finished the job). The misleading "Abort" prompt
+  at the start is gone.
+- **Objective names:** photo objectives name what to photograph, and a
+  second one says "another".
+- **Settings:** the music and sound volumes, saved since Phase 8, now have
+  rows on the SETTINGS tab.
+
+## 16. Making it playable (second playtest)
+
+Feedback was that the game was "pretty impossible": players were caught too
+fast, couldn't see, fought the controls, and couldn't do the minigames.
+Changes:
+
+- **Detection.**
+  - Guard eyesight is scaled by difficulty: easy 0.45, normal 0.65, hard
+    1.0. Hard used to be 1.3, and the old normal is the new hard.
+  - A lit torch counts as light level 0.4 on the player, down from 0.7, and
+    adds 0.08 to the light level, down from 0.18.
+  - Suspicion from seeing a torch beam is down by a third.
+- **Grabbed, not caught.**
+  - A catch first becomes a grab: 3 seconds to press A (or B, C or Z) six
+    times.
+  - Breaking free stuns the guard for 2.5 s (`ai_shove`) and clears the
+    catch, so you can run.
+  - Escapes per job: easy 3, normal 2, hard 1. After that, or if you don't
+    break free in time, you're caught as before (cuffed in co-op).
+- **Seeing.**
+  - A brightness setting from 1 to 5 (default 3) puts a gamma curve over
+    the baked light. Level 3 uses γ 1.5, which roughly doubles the darkest
+    values.
+  - The curve covers the world meshes, props and characters. Detection uses
+    the raw bake, so a brighter screen doesn't make you more visible.
+- **Simple controls.**
+  - You aim where you face (the cursor is fixed at the centre) and the view
+    stays level.
+  - "Use" picks whatever is in front of you, high or low: a 0.7 horizontal
+    cone.
+  - The default turn speed is now 2.2 rad/s.
+- **Minigames.**
+  - With Simple controls, the stick replaces the twist for the lock (stick
+    x × 62°) and the safe dial (60% speed), and steers the hacking cursor.
+  - On easy and normal the sweet spots are wider: the lock window ×1.5, the
+    safe ±2 instead of ±1, and the hacking tolerance ×1.5 with +20 s.
+- **Saves.** Format version 3 adds brightness. v1 and v2 saves still load.
