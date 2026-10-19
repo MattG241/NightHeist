@@ -13,6 +13,7 @@
 #include "core/nh_player.h"
 #include "core/nh_security.h"
 #include "guards.h"
+#include "ui.h"
 #include "platform/platform.h"
 #include "world.h"
 
@@ -41,7 +42,7 @@ typedef struct Action {
     bool blocked;       /* shown greyed out (e.g. locked without a key) */
 } Action;
 
-typedef enum Screen { SCR_PLAY, SCR_MAP, SCR_OBJECTIVES, SCR_SUMMARY } Screen;
+typedef enum Screen { SCR_PLAY, SCR_MAP, SCR_OBJECTIVES, SCR_SUMMARY, SCR_PAUSE } Screen;
 typedef enum Minigame { MG_KIND_NONE, MG_KIND_LOCK, MG_KIND_SAFE, MG_KIND_HACK } MinigameKind;
 
 typedef struct Projectile {
@@ -128,6 +129,7 @@ typedef struct Heist {
     NhVec3 guard_prev[AI_MAX_GUARDS];
     float cam_beep_t, entry_beep_t;
     bool was_torch, was_thermal, subtitles, summary_audio;
+    int pause_sel, pause_page; /* page 0 menu, 1 controls, 2 confirm abandoning */
 } Heist;
 
 /* Start a job: a generated building, or the hand-built test level if job is NULL. */
@@ -144,5 +146,6 @@ void heist_status(Heist *h, const char *msg);
 void heist_noise(Heist *h, NhVec3 pos, float radius, int kind);
 void heist_alarm(Heist *h, NhVec3 where, const char *why);
 void heist_set_power(Heist *h, int circuit, bool on);
+UiMenu heist_pause_menu(const Heist *h);
 
 #endif

@@ -102,6 +102,8 @@ void plat_audio_end(void);
 bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch);
 /* Testing aid: which job to generate (type -1 = the hand-built test level). */
 bool plat_debug_job(int *type, int *size, unsigned *seed, int *security);
+/* Testing aid: start with the debug overlay showing. */
+bool plat_debug_overlay(void);
 
 /* ---- memory stats (debug overlay) --------------------------------------- */
 

@@ -131,6 +131,22 @@ void test_board(void)
         max_gap = NH_MAX(max_gap, gap);
     }
     CHECK(news >= 20 && max_gap <= 1); /* never two jobs running without something new */
+    /* Walking away moves nothing on: no career step, no loyalty, no news. */
+    NhCampaign w;
+    camp_new(&w, 5);
+    w.crew_selected = 1u << CR_DRIVER;
+    NhJobOffer wo = w.board[0];
+    NhGenParams wp;
+    camp_offer_params(&w, &wo, &wp);
+    CHECK(nh_gen_building(&s_L, &wp, &s_P));
+    NhJob wj;
+    job_init(&wj, &s_L, &s_P, wo.seed);
+    NhJobResult ab = { 0 };
+    ab.outcome = JOB_ABORTED;
+    NhPayday wpay;
+    uint8_t loyal = w.crew_loyalty[CR_DRIVER];
+    camp_finish_job(&w, &wo, &ab, &wj, &s_L, &s_P, s_P.fingerprint, s_P.setpieces, &wpay);
+    CHECK(camp_career(&w) == 0 && w.crew_loyalty[CR_DRIVER] == loyal && !wpay.news[0]);
 }
 
 /* A plausible player: grade improves with upgrades, gets worse with security. */

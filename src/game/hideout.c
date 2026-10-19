@@ -431,6 +431,9 @@ void hideout_render(const Hideout *ho, const NhCampaign *c, const NhSaveSettings
         }
     if (ho->msg_t > 0)
         text_draw(320 - text_width(ho->msg, 2) * 0.5f, 462, 2, HI, ho->msg);
+    else if (ho->plan < 0 && ho->tab != TAB_SETTINGS)
+        text_draw(320 - text_width("D-pad: tabs    A: choose    HOME: title", 1) * 0.5f, 466, 1, DIM,
+                  "D-pad: tabs    A: choose    HOME: title");
     if (ho->show_pay) {
         const NhPayday *p = &ho->pay;
         text_rect(110, 110, 420, 260, nh_rgba(10, 12, 18, 245));

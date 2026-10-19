@@ -320,7 +320,7 @@ void camp_finish_job(NhCampaign *c, const NhJobOffer *o, const NhJobResult *r, c
     out->gross = gross;
     out->crew_cut = gross * cut / 100;
     /* Loot sets: count what came home. */
-    if (r->outcome == JOB_SUCCESS || r->outcome == JOB_PARTIAL || r->outcome == JOB_ABORTED) {
+    if (r->outcome == JOB_SUCCESS || r->outcome == JOB_PARTIAL) {
         for (int i = 0; i < plan->nent; i++) {
             const NhEntity *e = &plan->ent[i];
             if (e->kind != ENT_LOOT || !job_taken(j, i) || e->prop < 0)
@@ -365,15 +365,16 @@ void camp_finish_job(NhCampaign *c, const NhJobOffer *o, const NhJobResult *r, c
         c->heat[k] = (uint8_t)NH_CLAMP((int)c->heat[k] + (k == d ? heat : -6), 0, 100);
     out->heat = heat;
     /* Crew loyalty */
-    for (int m = 0; m < CR_COUNT; m++)
+    for (int m = 0; m < CR_COUNT && r->outcome != JOB_ABORTED; m++)
         if (camp_crew_on(c, m))
             c->crew_loyalty[m] = (uint8_t)NH_MIN(100, c->crew_loyalty[m] + 12 + (r->grade == 'S' || r->grade == 'A' ? 8 : 0));
     if (o->loyalty_crew && r->outcome == JOB_SUCCESS)
         c->crew_perk2 |= (uint8_t)(1u << (o->loyalty_crew - 1));
     /* Progress */
+    /* Walking away doesn't move the career on (no unlocks, no finale). */
     if (r->outcome == JOB_BUSTED) {
         c->jobs_failed++;
-    } else {
+    } else if (r->outcome != JOB_ABORTED) {
         c->jobs_done++;
         c->district_jobs[d]++;
         if (r->ghost && r->outcome == JOB_SUCCESS)
@@ -394,7 +395,7 @@ void camp_finish_job(NhCampaign *c, const NhJobOffer *o, const NhJobResult *r, c
     c->sp_hist[2] = c->sp_hist[1];
     c->sp_hist[1] = c->sp_hist[0];
     c->sp_hist[0] = setpieces;
-    if (!c->postgame)
+    if (!c->postgame && r->outcome != JOB_ABORTED)
         camp_unlock_news(camp_career(c), out->news, (int)sizeof(out->news));
     camp_make_board(c);
 }

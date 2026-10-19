@@ -644,3 +644,115 @@ measured column gets filled.
 - Settings cover pointer smoothing, the turn box, turn speed, crouch
   toggle, invert, rumble, subtitles, music and SFX volume, difficulty and
   the playtest log.
+
+## 13. Audio and presentation (Phases 9–10)
+
+**Synthesis (`nh_synth.c`).** No audio files ship. At boot the game
+renders the following at 22,050 Hz mono:
+
+- 70 sound effects;
+- the heist theme in 4 stems;
+- the safehouse theme in 2 stems.
+
+Rendering takes about 0.3 s on desktop, produces 5 MB, and runs behind a
+"tuning up..." screen.
+
+How a sound is built:
+
+- Each effect is a recipe of notes. A note has an oscillator (sine,
+  triangle, saw, square or noise) and an ADSR envelope.
+- Each note can also have:
+  - an exponential pitch glide;
+  - a pair of swept one-pole low-passes;
+  - a high-pass;
+  - a TPT state-variable band-pass;
+  - tanh drive;
+  - detune, vibrato and tremolo.
+- Footsteps use one recipe per surface. Voices are a saw through two
+  formant band-passes.
+- The police siren is a phase-integrated sweep whose cycles close exactly
+  at the loop point.
+
+Looping:
+
+- Looping effects and music stems render with their tails wrapped onto the
+  start, so the loop is seamless.
+- Held tones in loops use whole cycles per loop.
+- Lengths are multiples of 16 samples, the 32-byte granularity ASND needs.
+
+Tests check that every effect and stem:
+
+- reaches its level and isn't silent;
+- is deterministic;
+- ends at zero (one-shots);
+- has no seam larger than its largest sample step (loops).
+
+`make audiodump` writes everything as WAV.
+
+**Music.**
+
+| Theme | Tempo and key | Stems |
+|---|---|---|
+| Heist | 96 BPM, D minor (i–VI–iv–V) | ambient (pad, drone, bells), pulse (bass eighths, hats), tension (sixteenth arpeggios, kick), action (full kit, driven bass, stabs) |
+| Safehouse | 84 BPM lounge (Dm7–G7–Cmaj7–A7) | electric piano and walking bass; brushes and crackle |
+
+All stems of a theme start together inside `plat_audio_begin`/`end`. That
+is an audio-lock on SDL and IRQs off on the Wii, so they never drift. They
+fade towards target levels: in over about 2 s, out over about 4 s.
+
+In a heist the stem targets come from:
+
+| Stem | Plays when |
+|---|---|
+| Ambient | Always |
+| Pulse | Suspicion is above 0.2, a minigame is running, or a guard is hunting |
+| Tension | A guard is investigating, alert or searching, or suspicion is above 0.6 |
+| Action | The alarm is up or you are caught (ambient drops to 40%) |
+
+The title screen plays the piano stem alone, and the safehouse adds the
+brushes.
+
+**Positional audio (`audio.c`).**
+- Effects in the world fall off with `(1 − d/range)²`.
+- They are muffled to 45% when a wall or closed door blocks the line from
+  the listener (a level raycast), and to 35% on another floor.
+- They are panned by bearing, with a ±6% random pitch.
+- Looping sources follow their position every tick: noisemakers, the drill
+  and a ringing phone.
+- The alarm bell and the sirens are flat. The sirens fade in over the last
+  30 s before the police arrive.
+- Guard footsteps are played from distance walked (0.75 m per stride, 0.45 m
+  for dogs) on the surface under them, so you hear patrols before you see
+  them.
+
+Voice budget is the 16 hardware voices: 4 music, up to 12 loops, and the
+rest for one-shots.
+
+**Title screen.**
+- A procedural night skyline: two layers of towers with lit windows that
+  come and go, masts with blinking lights, a moon, a sweeping searchlight
+  and street lamps.
+- Menu: CONTINUE (with a career summary), NEW CAREER (asks before
+  overwriting), CONTROLS and QUIT.
+- HOME in the safehouse returns here.
+
+**Pause.** HOME during a job opens RESUME, CONTROLS and ABANDON THE JOB.
+- Abandoning asks first. It ends the job as *walked away*: no pay, no
+  loot-set progress, no loyalty and no career step, but the heat stays.
+  Without these rules, walking away would be a free way to unlock things.
+
+**Performance and memory (Wii, Dolphin), worst case: a large bank at
+security 3.**
+- 59.9 fps, 2.6 ms CPU per frame.
+- 41k triangles in 89 draws.
+- Generation, build and bake take 7.3 s, behind a loading screen.
+
+| Memory | Use |
+|---|---|
+| Persistent arena | 2.3 of 4 MB |
+| Level arena | 5.6 of 12 MB |
+| Scratch | 6.6 of 10 MB |
+| Level geometry | 6.9 MB |
+| Audio bank | 5 MB, from the heap |
+
+About 31 MB of MEM2 is still free.

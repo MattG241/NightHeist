@@ -172,6 +172,13 @@ bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const
     return true;
 }
 
+UiMenu heist_pause_menu(const Heist *h)
+{
+    static const char *const items[] = { "RESUME", "CONTROLS", "ABANDON THE JOB" };
+    (void)h;
+    return (UiMenu){ 200, 200, 240, 34, 2, 3, items, NULL };
+}
+
 static void stop_loops(Heist *h)
 {
     audio_stop_effects();
@@ -660,6 +667,42 @@ void heist_tick(Heist *h, const NhInput *in, GameSettings *gs)
             }
             h->want_rebuild = true;
         }
+        return;
+    }
+    if (h->screen == SCR_PAUSE) {
+        plat_rumble(false);
+        if (h->pause_page == 1) {
+            if (in->pressed & (NH_BTN_A | NH_BTN_B | NH_BTN_HOME))
+                h->pause_page = 0;
+            return;
+        }
+        if (h->pause_page == 2) {
+            if (in->pressed & NH_BTN_A) {
+                job_event(&h->state, &h->plan, JE_ABORT, -1, 0);
+                job_result(&h->state, &h->result);
+                h->screen = SCR_SUMMARY;
+            } else if (in->pressed & (NH_BTN_B | NH_BTN_HOME)) {
+                h->pause_page = 0;
+            }
+            return;
+        }
+        if (in->pressed & (NH_BTN_B | NH_BTN_HOME)) {
+            audio_play(SFX_UI_BACK, 0.5f, 0.0f, 1.0f);
+            h->screen = SCR_PLAY;
+            return;
+        }
+        UiMenu m = heist_pause_menu(h);
+        int pick = ui_menu_tick(&m, &h->pause_sel, in);
+        if (pick == 0)
+            h->screen = SCR_PLAY;
+        else if (pick > 0)
+            h->pause_page = pick;
+        return;
+    }
+    if ((in->pressed & NH_BTN_HOME) && h->caught_t <= 0.0f) {
+        audio_play(SFX_UI_SELECT, 0.5f, 0.0f, 1.0f);
+        h->screen = SCR_PAUSE;
+        h->pause_sel = h->pause_page = 0;
         return;
     }
     if (h->screen == SCR_MAP || h->screen == SCR_OBJECTIVES) {

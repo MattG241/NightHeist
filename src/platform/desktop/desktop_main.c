@@ -23,6 +23,7 @@ static bool s_has_start;
 static bool s_has_job;
 static int s_job[4];
 static float s_start[5];
+static bool s_overlay;
 static uint32_t s_prev_held;
 static bool s_rumble;
 static bool load_script(const char *path);
@@ -30,7 +31,7 @@ static bool load_script(const char *path);
 static void usage(void)
 {
     puts("nightheist [--frames N] [--screenshot PATH] [--shot-every N] [--script FILE] [--wide] [--novsync]"
-         " [--job TYPE,SIZE,SEED[,SECURITY]] [--test-level]"
+         " [--job TYPE,SIZE,SEED[,SECURITY]] [--test-level] [--overlay]"
          " [--data DIR]");
 }
 
@@ -64,6 +65,8 @@ static bool parse_args(const NhPlatformArgs *args)
             g_desktop_opts.wide = true;
         else if (!strcmp(a, "--novsync"))
             g_desktop_opts.vsync = false;
+        else if (!strcmp(a, "--overlay"))
+            s_overlay = true;
         else {
             usage();
             return false;
@@ -121,6 +124,8 @@ bool plat_debug_job(int *type, int *size, unsigned *seed, int *security)
     *security = s_job[3];
     return true;
 }
+
+bool plat_debug_overlay(void) { return s_overlay; }
 
 bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
 {

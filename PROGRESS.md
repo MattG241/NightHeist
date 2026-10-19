@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: 7–8, Campaign (complete); next is 9–10, presentation and release
+## Current phase: complete (all phases 0–10 done)
 
 | Phase | Status |
 |---|---|
@@ -11,7 +11,7 @@
 | 4. Procedural generator (5 types × 3 sizes, 44 set pieces, 10k-seed test) | Done |
 | 5–6. Interactables, 14 gadgets, 3 minigames, objectives, security, alarm/police, extraction, rating | Done |
 | 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Done |
-| 9–10. Audio and music, UI and title, settings, performance audit, release | Next |
+| 9–10. Audio and music, UI and title, settings, performance audit, release | Done |
 
 ## What exists
 
@@ -174,10 +174,42 @@ open offices and 45% of archives need a second try at their furniture.
   every tab, with `save.dat` and `save.bak` written.
 - **Wii (Dolphin):** the safehouse renders and runs.
 
-## Next: Phase 9–10, presentation and release
+## Phase 9–10 results
 
-- Audio: sound effects for every system, and layered music driven by the
-  alert level.
-- A title screen, a pause menu, and UI polish.
-- A performance and memory audit on Wii.
-- Release packaging for the Homebrew Channel, and the README.
+- **Audio.**
+  - 70 synthesised effects, plus layered heist and safehouse music
+    (`DESIGN.md` §13).
+  - Positioned sound with wall and floor occlusion; guard footsteps.
+  - Every interaction, minigame event and gadget has a sound.
+  - Music is driven by suspicion, searches and alarms.
+  - Checked on desktop through SDL's disk driver, and on Wii through
+    Dolphin's DSP dump.
+- **Presentation.**
+  - A title screen with a procedural skyline, a career summary and a
+    controls card.
+  - A pause menu (resume, controls, abandon the job).
+  - UI clicks throughout the safehouse.
+  - The subtitles setting is now honoured.
+- **Rules.** Walking away from a job no longer counts as progress.
+- **Tests:** `test_synth` (all effects and stems), and abandoned jobs
+  (32.1k checks, 0 failures).
+- **Performance on Wii** (worst case, a large bank at security 3):
+  - 59.9 fps, 2.6 ms CPU;
+  - level arena 5.6/12 MB, scratch 6.6/10 MB;
+  - audio bank 5 MB;
+  - about 31 MB of MEM2 free.
+- **Release.**
+  - `make package` builds `dist/NightHeist.zip` (boot.dol, meta.xml 1.0.0,
+    icon, data).
+  - README rewritten for players and contributors.
+  - `--overlay` and the `overlay` line in `debug_start.txt` turn on the
+    debug overlay for testing.
+
+## Known issues and ideas
+
+- Generating a large building takes about 7 s on the Wii; a progress bar or
+  generating during the plan screen would hide it.
+- Music is rendered at boot (about 0.3 s on desktop, longer on Wii). Lazy
+  rendering per theme would shorten the first load.
+- The `PACING.md` timeline is from the simulated player; the playtest log
+  is there to replace it with real numbers.

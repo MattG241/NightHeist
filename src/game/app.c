@@ -15,6 +15,7 @@
 #include "platform/gfx.h"
 #include "res.h"
 #include "text.h"
+#include "title.h"
 
 #define PERSIST_SIZE (4u << 20)
 #define LEVEL_SIZE (12u << 20)
@@ -37,15 +38,17 @@ static NhCampaign s_camp;
 static NhSaveSettings s_save_settings;
 static Hideout s_hideout;
 static NhJobOffer s_offer;
-static enum { MODE_HIDEOUT, MODE_HEIST } s_mode;
+static Title s_title;
+static enum { MODE_TITLE, MODE_HIDEOUT, MODE_HEIST } s_mode;
 
 static void path_of(char *out, size_t n, const char *file)
 {
     snprintf(out, n, "%s/%s", plat_data_dir(), file);
 }
 
-/* Main slot, falling back to the backup of the last good save. */
-static void load_game(void)
+/* Main slot, falling back to the backup of the last good save. Returns
+ * whether a career was loaded. */
+static bool load_game(void)
 {
     static uint8_t buf[SAVE_MAX_BYTES];
     const char *slots[2] = { "save.dat", "save.bak" };
@@ -56,7 +59,7 @@ static void load_game(void)
         if (n > 0 && save_decode(buf, (size_t)n, &s_camp, &s_save_settings, why, sizeof(why))) {
             printf("loaded %s\n", slots[k]);
             hideout_init(&s_hideout);
-            return;
+            return true;
         }
         if (n > 0)
             fprintf(stderr, "%s: %s\n", slots[k], why);
@@ -64,6 +67,7 @@ static void load_game(void)
     camp_new(&s_camp, (uint32_t)(plat_time_us() & 0xFFFFFFFFu) | 1u);
     save_default_settings(&s_save_settings);
     hideout_init(&s_hideout);
+    return false;
 }
 
 /* Keep the previous good save as the backup, then write the new one. */
@@ -153,11 +157,14 @@ int nh_app_run(const NhPlatformArgs *args)
     loading_screen("tuning up...");
     if (!audio_init())
         fprintf(stderr, "audio: out of memory, continuing silently\n");
-    load_game();
+    title_init(&s_title, load_game());
     apply_settings();
+    s_settings.show_debug = plat_debug_overlay();
     static const float k_safe_mix[NH_MUSIC_LAYERS] = { 1.0f, 0.8f, 0.0f, 0.0f };
+    static const float k_title_mix[NH_MUSIC_LAYERS] = { 0.9f, 0.0f, 0.0f, 0.0f };
     audio_music(THEME_SAFEHOUSE);
-    audio_music_mix(k_safe_mix);
+    audio_music_mix(k_title_mix);
+    s_mode = MODE_TITLE;
 
     /* Debug jobs (--job / debug_start.txt) skip the safehouse. */
     int jt, js, jsec;
@@ -196,8 +203,6 @@ int nh_app_run(const NhPlatformArgs *args)
 
         NhInput in;
         plat_input_poll(&in);
-        if (in.pressed & NH_BTN_HOME)
-            plat_request_quit();
 
         /* Edges must reach exactly one tick even on frames that run zero ticks. */
         pending_pressed |= in.pressed;
@@ -209,8 +214,27 @@ int nh_app_run(const NhPlatformArgs *args)
             tick_in.released = pending_released;
             pending_pressed = pending_released = 0;
             audio_tick(NH_TICK_DT);
-            if (s_mode == MODE_HEIST) {
+            if (s_mode == MODE_TITLE) {
+                TitleAction ta = title_tick(&s_title, &tick_in);
+                if (ta == TA_QUIT) {
+                    plat_request_quit();
+                } else if (ta == TA_NEW || ta == TA_CONTINUE) {
+                    if (ta == TA_NEW) {
+                        camp_new(&s_camp, (uint32_t)(plat_time_us() & 0xFFFFFFFFu) | 1u);
+                        hideout_init(&s_hideout);
+                        save_game();
+                    }
+                    s_mode = MODE_HIDEOUT;
+                    audio_music_mix(k_safe_mix);
+                }
+            } else if (s_mode == MODE_HEIST) {
                 heist_tick(&s_heist, &tick_in, &s_settings);
+            } else if (tick_in.pressed & NH_BTN_HOME) {
+                /* Back to the title (the career is saved after every change). */
+                save_game();
+                title_init(&s_title, true);
+                s_mode = MODE_TITLE;
+                audio_music_mix(k_title_mix);
             } else {
                 s_camp.play_time += NH_TICK_DT;
                 int job = -1;
@@ -230,7 +254,9 @@ int nh_app_run(const NhPlatformArgs *args)
             fps_frames = 0;
             fps_start = now;
         }
-        if (s_mode == MODE_HEIST) {
+        if (s_mode == MODE_TITLE) {
+            title_render(&s_title, &s_camp);
+        } else if (s_mode == MODE_HEIST) {
             heist_render(&s_heist, nh_fixedstep_alpha(&step), &s_settings, fps);
         } else {
             hideout_render(&s_hideout, &s_camp, &s_save_settings);

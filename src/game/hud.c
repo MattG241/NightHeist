@@ -7,6 +7,7 @@
 #include "core/nh_rooms.h"
 #include "res.h"
 #include "text.h"
+#include "ui.h"
 
 static const NhColor FG = { 230, 230, 230, 255 };
 static const NhColor DIM = { 150, 150, 160, 255 };
@@ -259,6 +260,24 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
         hud_draw_objectives(h);
         return;
     }
+    if (h->screen == SCR_PAUSE) {
+        text_rect(0, 0, 640, 480, nh_rgba(4, 6, 12, 190));
+        if (h->pause_page == 1) {
+            ui_draw_controls(70);
+            centered(456, 1, DIM, "A or B: back");
+        } else if (h->pause_page == 2) {
+            centered(180, 3, HI, "Walk away?");
+            centered(220, 1, FG, "You leave with nothing. The heat stays.");
+            centered(260, 2, FG, "A  walk away      B  stay");
+        } else {
+            centered(120, 4, HI, "PAUSED");
+            centered(160, 1, DIM, h->job_name);
+            UiMenu m = heist_pause_menu(h);
+            ui_menu_draw(&m, h->pause_sel);
+            centered(456, 1, DIM, "B or HOME: back to the job");
+        }
+        return;
+    }
     const NhPlayer *p = &h->player;
     if (h->hide_prop >= 0)
         draw_hiding();
@@ -437,7 +456,7 @@ void hud_draw_summary(const Heist *h)
     text_rect(0, 0, 640, 480, nh_rgba(4, 6, 12, 240));
     static const char *const k_out[] = { "", "JOB DONE", "GOT OUT (target missing)", "JOB ABORTED", "BUSTED" };
     centered(30, 3, r->outcome == JOB_BUSTED ? RED : HI, k_out[r->outcome]);
-    char grade[2] = { r->grade, 0 };
+    char grade[2] = { r->outcome == JOB_ABORTED ? '-' : r->grade, 0 };
     text_draw(560, 100, 6, r->grade == 'F' ? RED : r->grade == 'S' ? HI : FG, grade);
     text_draw(548, 150, 1, DIM, "grade");
     float y = 110;
@@ -453,7 +472,8 @@ void hud_draw_summary(const Heist *h)
     y += 22;
     text_printf(60, y, 2, HI, "Payout          $%d", r->payout * 10);
     y += 30;
-    text_printf(60, y, 2, FG, "Stealth %d%%%s   heat +%d", r->stealth, r->ghost ? "  GHOST" : "", r->heat * 5);
+    text_printf(60, y, 2, FG, "Stealth %d%%%s   heat +%d", r->stealth,
+                r->ghost && r->outcome == JOB_SUCCESS ? "  GHOST" : "", r->heat * 5);
     y += 22;
     text_printf(60, y, 2, DIM, "Time %d:%02d  spotted %d  takedowns %d  alarms %d", (int)j->time / 60,
                 (int)j->time % 60, j->spotted + j->camera_spots, j->takedowns, j->alarms);
