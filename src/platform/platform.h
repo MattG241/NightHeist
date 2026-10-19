@@ -90,6 +90,11 @@ typedef struct NhSound {
 int plat_audio_play(const NhSound *s, float volume, float pan);
 void plat_audio_stop(int voice);
 
+/* ---- debug -------------------------------------------------------------- */
+
+/* Desktop-only override of the player's start (for screenshots/tests). */
+bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch);
+
 /* ---- memory stats (debug overlay) --------------------------------------- */
 
 typedef struct NhMemStats {

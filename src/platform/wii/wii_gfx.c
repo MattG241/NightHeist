@@ -25,7 +25,8 @@
 #include "platform/gfx.h"
 #include "wii_internal.h"
 
-#define FIFO_SIZE (512 * 1024)
+#define FIFO_SIZE (1024 * 1024)
+#define NUM_XFB 3
 #define MAX_Q2D 4096
 #define MAX_Q3D 3072
 #define MAX_BEGIN_VERTS 65532 /* GX_Begin takes a u16 count; keep whole triangles */
@@ -61,7 +62,9 @@ typedef struct Quad {
 } Quad;
 
 static GXRModeObj *s_rmode;
-static void *s_xfb[2];
+static void *s_xfb[NUM_XFB];
+static bool s_pending; /* a finished frame is waiting for the GPU */
+static int s_pending_fb;
 static int s_fb;
 static void *s_fifo;
 static bool s_wide;
@@ -108,7 +111,7 @@ bool wii_gfx_init(void)
     }
 
     VIDEO_Configure(s_rmode);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < NUM_XFB; i++) {
         s_xfb[i] = MEM_K0_TO_K1(SYS_AllocateFramebuffer(s_rmode));
         VIDEO_ClearFrameBuffer(s_rmode, s_xfb[i], COLOR_BLACK);
     }
@@ -771,20 +774,29 @@ void gfx_end_frame(void)
         if (s_textures[i].used)
             s_cur.tex_bytes += s_textures[i].bytes;
 
+    /* CPU/GPU overlap: this frame's commands are already queued behind the
+     * previous frame's copy. Wait for the previous frame only now, show it,
+     * then queue this frame's copy and let the GPU chew on it while the CPU
+     * simulates the next frame. Three XFBs so the one being written is never
+     * the one being scanned out. */
+    if (s_pending) {
+        GX_WaitDrawDone();
+        s_cur.gpu_wait_us = (u32)ticks_to_microsecs(gettime() - t0);
+        VIDEO_SetNextFramebuffer(s_xfb[s_pending_fb]);
+        if (s_first_frame) {
+            VIDEO_SetBlack(FALSE);
+            s_first_frame = false;
+        }
+        VIDEO_Flush();
+        VIDEO_WaitVSync();
+    }
     GX_SetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE);
     GX_SetColorUpdate(GX_TRUE);
     GX_CopyDisp(s_xfb[s_fb], GX_TRUE);
-    GX_DrawDone();
-    s_cur.gpu_wait_us = (u32)ticks_to_microsecs(gettime() - t0);
-
-    VIDEO_SetNextFramebuffer(s_xfb[s_fb]);
-    if (s_first_frame) {
-        VIDEO_SetBlack(FALSE);
-        s_first_frame = false;
-    }
-    VIDEO_Flush();
-    VIDEO_WaitVSync();
-    s_fb ^= 1;
+    GX_SetDrawDone();
+    s_pending = true;
+    s_pending_fb = s_fb;
+    s_fb = (s_fb + 1) % NUM_XFB;
 
     s_stats = s_cur;
     s_frame_start = gettime();

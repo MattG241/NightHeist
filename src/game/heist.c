@@ -24,6 +24,11 @@ bool heist_start_test(Heist *h, NhArena *level_arena, NhArena *scratch)
     float yaw;
     NhVec3 start = testlevel_start(&yaw);
     nh_player_init(&h->player, start, yaw);
+    float dx, dy, dz, dyaw, dpitch = 0.0f;
+    if (plat_debug_start(&dx, &dy, &dz, &dyaw, &dpitch)) {
+        nh_player_init(&h->player, nh_v3(dx, dy, dz), dyaw);
+        h->player.pitch = h->player.prev_pitch = dpitch;
+    }
     h->torch_on = true;
     h->battery = 1.0f;
     h->torch_dir = nh_dir_from_yaw_pitch(yaw, 0);
@@ -176,6 +181,49 @@ static void torch_projector(const Heist *h, NhVec3 eye, const NhMat34 *view, Gfx
     nh_light_set_dist(&pr->light, 11.0f, 0.5f, NH_DIST_MEDIUM);
 }
 
+/* Dust motes drifting in the torch beam, up to where the beam hits something. */
+static void draw_dust(const Heist *h, NhVec3 eye, const NhMat34 *view, float alpha)
+{
+    static GfxTexture dust;
+    if (!dust)
+        dust = res_texture("dust");
+    NhVec3 right = nh_v3(view->m[0][0], view->m[0][1], view->m[0][2]);
+    NhVec3 up = nh_v3(view->m[1][0], view->m[1][1], view->m[1][2]);
+    NhVec3 hand = nh_v3_add(eye, nh_v3_add(nh_v3_scale(right, 0.16f), nh_v3_scale(up, -0.14f)));
+    NhVec3 dir = h->torch_dir;
+    float reach = 9.0f, t;
+    if (lv_raycast(&h->world.L, hand, nh_v3_add(hand, nh_v3_scale(dir, reach)), &t))
+        reach *= t;
+    NhVec3 a = nh_v3_norm(nh_v3_cross(dir, nh_v3(0, 1, 0)));
+    if (nh_v3_len(a) < 0.1f)
+        a = nh_v3(1, 0, 0);
+    NhVec3 b = nh_v3_cross(a, dir);
+    float time = ((float)h->tick + alpha) / 60.0f;
+    float bat = h->battery < 0.15f ? 0.5f + h->battery * 3.3f : 1.0f;
+    for (int i = 0; i < 56; i++) {
+        uint32_t k = (uint32_t)i * 2654435761u;
+        float r1 = (float)(k & 1023) / 1023.0f, r2 = (float)((k >> 10) & 1023) / 1023.0f;
+        float r3 = (float)((k >> 20) & 1023) / 1023.0f;
+        float d = 0.6f + fmodf(r1 * 8.0f + time * (0.05f + r3 * 0.08f), 8.0f);
+        if (d > reach)
+            continue;
+        float ang = r2 * 6.2832f + time * 0.15f * (r3 - 0.5f);
+        float rad = sqrtf(r3) * 0.38f * d;
+        NhVec3 p = nh_v3_add(hand, nh_v3_scale(dir, d));
+        p = nh_v3_add(p, nh_v3_add(nh_v3_scale(a, cosf(ang) * rad), nh_v3_scale(b, sinf(ang) * rad)));
+        p.y += sinf(time * 0.7f + r1 * 9.0f) * 0.05f;
+        float edge = 1.0f - rad / (0.38f * d + 1e-3f);
+        float bright = edge * edge * fminf(1.0f, 2.0f / d) * bat;
+        if (bright < 0.03f)
+            continue;
+        float s = 0.012f + r2 * 0.012f;
+        NhVec3 rr = nh_v3_scale(right, s), uu = nh_v3_scale(up, s);
+        NhVec3 c[4] = { nh_v3_sub(nh_v3_sub(p, rr), uu), nh_v3_sub(nh_v3_add(p, rr), uu),
+                        nh_v3_add(nh_v3_add(p, rr), uu), nh_v3_add(nh_v3_sub(p, rr), uu) };
+        gfx_draw_quad3d(dust, c, 0, 0, 1, 1, nh_rgba(255, 236, 200, (uint8_t)(200 * bright)), GFX_MAT_ADD);
+    }
+}
+
 void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps)
 {
     World *w = &h->world;
@@ -195,6 +243,8 @@ void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps)
     WorldView wv = { view, eye, HEIST_FOVY, gfx_display_aspect(), 0.08f, 90.0f,
                      h->player.mode == NH_MOVE_VENT, h->player.floor };
     world_draw(w, &wv);
+    if (h->torch_on && h->player.mode == NH_MOVE_WALK)
+        draw_dust(h, eye, &view, alpha);
 
     hud_draw_heist(h, gs);
     if (gs->show_debug)

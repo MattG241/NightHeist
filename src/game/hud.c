@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+#include "app.h"
 #include "core/nh_rooms.h"
 #include "res.h"
 #include "text.h"
@@ -64,7 +65,10 @@ void hud_draw_debug(const Heist *h, float fps)
     text_printf(x, y, 2, FG, "geo %.1fM tex %.1fM res %.1fM", st.mesh_bytes / 1048576.0f, st.tex_bytes / 1048576.0f,
                 res_bytes() / 1048576.0f);
     y += lh;
-    text_printf(x, y, 2, FG, "heap %.1fM  M1 %.1fM  M2 %.1fM", mem.heap_used / 1048576.0f, mem.mem1_free / 1048576.0f,
+    size_t ar[6];
+    app_arena_stats(ar);
+    text_printf(x, y, 2, FG, "P%.1f/%.0f L%.1f/%.0f S%.1f/%.0f M2 %.1f", ar[0] / 1048576.0f, ar[1] / 1048576.0f,
+                ar[2] / 1048576.0f, ar[3] / 1048576.0f, ar[4] / 1048576.0f, ar[5] / 1048576.0f,
                 mem.mem2_free / 1048576.0f);
     y += lh;
     text_printf(x, y, 2, FG, "seed %08X  build %u ms", (unsigned)w->L.seed, (unsigned)w->build_ms);

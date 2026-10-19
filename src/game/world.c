@@ -365,27 +365,35 @@ void world_draw(World *w, const WorldView *v)
     w->nvisible = nh_portals_visible(L, &w->portals, vp, v->eye, w->cam_room, w->visible);
     NhMat34 ident;
     nh_m34_identity(&ident);
-    for (int r = LV_ROOM_OUTSIDE; r < L->nrooms; r++) {
-        if (!w->visible[r] || !aabb_visible(vp, w->room_min[r], w->room_max[r]))
-            continue;
-        for (int i = w->room_first[r]; i < w->room_first[r] + w->room_count[r]; i++) {
-            const WorldBatch *wb = &w->batches[i];
-            if (wb->layer != NH_LAYER_ROOM || !aabb_visible(vp, wb->bmin, wb->bmax))
+    /* Opaque first, then blended surfaces (glass) so they composite over it. */
+    for (int pass = 0; pass < 2; pass++) {
+        for (int r = LV_ROOM_OUTSIDE; r < L->nrooms; r++) {
+            if (!w->visible[r] || !aabb_visible(vp, w->room_min[r], w->room_max[r]))
                 continue;
-            gfx_draw(wb->gm, res_mat(wb->mat), &ident);
+            for (int i = w->room_first[r]; i < w->room_first[r] + w->room_count[r]; i++) {
+                const WorldBatch *wb = &w->batches[i];
+                const GfxMaterial *m = res_mat(wb->mat);
+                bool blended = (m->flags & (GFX_MAT_BLEND | GFX_MAT_ADD)) != 0;
+                if (blended != (pass == 1) || wb->layer != NH_LAYER_ROOM || !aabb_visible(vp, wb->bmin, wb->bmax))
+                    continue;
+                gfx_draw(wb->gm, m, &ident);
+            }
+        }
+        if (pass == 0) {
+            /* Dynamic props and doors are opaque; draw them before the glass. */
+            for (int i = 0; i < L->nprops; i++) {
+                const LvProp *p = &L->props[i];
+                if (!(p->flags & LV_P_DYNAMIC) || (p->flags & LV_P_HIDDEN) || !w->visible[p->room ? p->room : 1])
+                    continue;
+                const ResModel *rm = res_model(nh_prop_info[p->type].name);
+                if (!rm)
+                    continue;
+                NhMat34 m;
+                prop_matrix(p, &m);
+                draw_model(w, rm, &m, w->prop_ambient[i]);
+            }
+            draw_doors(w);
         }
     }
-    for (int i = 0; i < L->nprops; i++) {
-        const LvProp *p = &L->props[i];
-        if (!(p->flags & LV_P_DYNAMIC) || (p->flags & LV_P_HIDDEN) || !w->visible[p->room ? p->room : 1])
-            continue;
-        const ResModel *rm = res_model(nh_prop_info[p->type].name);
-        if (!rm)
-            continue;
-        NhMat34 m;
-        prop_matrix(p, &m);
-        draw_model(w, rm, &m, w->prop_ambient[i]);
-    }
-    draw_doors(w);
     draw_glass_and_glows(w, v);
 }

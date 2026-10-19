@@ -19,6 +19,8 @@ DesktopOptions g_desktop_opts = { 0, NULL, 0, NULL, false, false, true, "apps/Ni
 SDL_Window *g_window;
 
 static bool s_quit;
+static bool s_has_start;
+static float s_start[5];
 static uint32_t s_prev_held;
 static bool s_rumble;
 static bool load_script(const char *path);
@@ -42,7 +44,12 @@ static bool parse_args(const NhPlatformArgs *args)
             g_desktop_opts.data_dir = args->argv[++i];
         else if (!strcmp(a, "--script") && has_next)
             g_desktop_opts.script = args->argv[++i];
-        else if (!strcmp(a, "--shot-every") && has_next)
+        else if (!strcmp(a, "--start") && has_next) {
+            s_has_start = sscanf(args->argv[++i], "%f,%f,%f,%f,%f", &s_start[0], &s_start[1], &s_start[2],
+                                 &s_start[3], &s_start[4]) >= 4;
+            s_start[3] = NH_DEG2RAD(s_start[3]);
+            s_start[4] = NH_DEG2RAD(s_start[4]);
+        } else if (!strcmp(a, "--shot-every") && has_next)
             g_desktop_opts.shot_every = atoi(args->argv[++i]);
         else if (!strcmp(a, "--wide"))
             g_desktop_opts.wide = true;
@@ -93,6 +100,18 @@ void plat_request_quit(void)
 const char *plat_name(void)
 {
     return "Desktop";
+}
+
+bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
+{
+    if (!s_has_start)
+        return false;
+    *x = s_start[0];
+    *y = s_start[1];
+    *z = s_start[2];
+    *yaw = s_start[3];
+    *pitch = s_start[4];
+    return true;
 }
 
 uint64_t plat_time_us(void)

@@ -22,10 +22,16 @@ class Geo:
     def _p(self, mat):
         return self.prims.setdefault(mat, {"pos": [], "nrm": [], "uv": [], "col": [], "idx": []})
 
-    def quad(self, mat, p0, p1, p2, p3, uv=((0, 0), (1, 0), (1, 1), (0, 1)), col=(1, 1, 1, 1)):
+    def quad(self, mat, p0, p1, p2, p3, uv=((0, 0), (1, 0), (1, 1), (0, 1)), col=(1, 1, 1, 1), facing=None):
+        """Quad p0..p3. If facing is given, the winding is fixed so the quad
+        faces that way (front faces are counter-clockwise)."""
         p = self._p(mat)
         a, b, c = np.array(p0, float), np.array(p1, float), np.array(p2, float)
         n = np.cross(b - a, c - a)
+        if facing is not None and np.dot(n, facing) < 0:
+            p0, p1, p2, p3 = p1, p0, p3, p2
+            uv = (uv[1], uv[0], uv[3], uv[2])
+            n = -n
         n = n / max(np.linalg.norm(n), 1e-9)
         base = len(p["pos"])
         for v, t in zip((p0, p1, p2, p3), uv):

@@ -13,11 +13,21 @@
 #include "res.h"
 #include "text.h"
 
-#define PERSIST_SIZE (8u << 20)
-#define LEVEL_SIZE (22u << 20)
-#define SCRATCH_SIZE (16u << 20)
+#define PERSIST_SIZE (4u << 20)
+#define LEVEL_SIZE (12u << 20)
+#define SCRATCH_SIZE (10u << 20)
 
 static NhArena s_persist, s_level, s_scratch;
+
+void app_arena_stats(size_t out[6])
+{
+    out[0] = s_persist.peak;
+    out[1] = s_persist.cap;
+    out[2] = s_level.peak;
+    out[3] = s_level.cap;
+    out[4] = s_scratch.peak;
+    out[5] = s_scratch.cap;
+}
 static Heist s_heist;
 static GameSettings s_settings;
 

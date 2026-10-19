@@ -68,6 +68,12 @@ const char *plat_name(void)
     return "Wii";
 }
 
+bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
+{
+    (void)x, (void)y, (void)z, (void)yaw, (void)pitch;
+    return false;
+}
+
 uint64_t plat_time_us(void)
 {
     return ticks_to_microsecs(gettime());

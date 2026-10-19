@@ -275,6 +275,23 @@ void test_assets(void)
         NhModel m;
         CHECK(nh_nmd_parse(d, len, &a, &m));
         CHECK(m.nparts >= 1 && !m.skinned);
+        /* Every triangle faces the way its normals say (catches inverted art). */
+        int bad = 0;
+        for (int k = 0; k < m.nparts; k++) {
+            const NhMesh *ms = &m.parts[k].mesh;
+            for (uint32_t t = 0; t + 2 < ms->icount; t += 3) {
+                NhVec3 p0 = nh_vert_pos(&ms->verts[ms->idx[t]]), p1 = nh_vert_pos(&ms->verts[ms->idx[t + 1]]),
+                       p2 = nh_vert_pos(&ms->verts[ms->idx[t + 2]]);
+                NhVec3 fn = nh_v3_cross(nh_v3_sub(p1, p0), nh_v3_sub(p2, p0));
+                NhVec3 vn = nh_v3_add(nh_v3_add(nh_vert_nrm(&ms->verts[ms->idx[t]]), nh_vert_nrm(&ms->verts[ms->idx[t + 1]])),
+                                      nh_vert_nrm(&ms->verts[ms->idx[t + 2]]));
+                if (nh_v3_len(fn) > 1e-7f && nh_v3_dot(fn, vn) <= 0.0f)
+                    bad++;
+            }
+        }
+        if (bad)
+            fprintf(stderr, "  prop %s: %d inverted triangles\n", nh_prop_info[i].name, bad);
+        CHECK(bad == 0);
         free(d);
     }
     /* The guard: skinned, split so each draw uses at most 10 bones. */
