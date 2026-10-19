@@ -1,0 +1,37 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  desktop-and-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libgl-dev
+      - name: Unit tests
+        run: make test
+      - name: Desktop build
+        run: make desktop
+      - name: Unit tests under ASan/UBSan
+        run: |
+          mkdir -p build/asan
+          cc -std=c11 -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc \
+            src/core/*.c src/game/demo_sim.c tests/*.c -lm -o build/asan/tests
+          ./build/asan/tests
+
+  wii:
+    runs-on: ubuntu-24.04
+    container: devkitpro/devkitppc:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build boot.dol
+        run: make wii
+      - name: Package apps/ folder
+        run: make package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NightHeist-apps
+          path: dist/apps

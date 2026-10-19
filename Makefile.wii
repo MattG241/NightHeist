@@ -1,0 +1,39 @@
+# Night Heist - Wii build (devkitPPC + libogc). Invoked by the top-level
+# Makefile; needs DEVKITPRO/DEVKITPPC in the environment.
+
+ifeq ($(strip $(DEVKITPPC)),)
+$(error DEVKITPPC is not set. Install devkitPro (wii-dev) or run "make wii-docker")
+endif
+
+include $(DEVKITPPC)/wii_rules
+
+BUILD   := build/wii
+TARGET  := $(BUILD)/nightheist
+
+SRC_DIRS := src/core src/game src/platform/wii
+SOURCES  := $(foreach d,$(SRC_DIRS),$(wildcard $(d)/*.c))
+OBJECTS  := $(patsubst %.c,$(BUILD)/%.o,$(SOURCES))
+DEPENDS  := $(OBJECTS:.o=.d)
+
+CFLAGS   := -std=gnu11 -O2 -g -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing \
+            $(MACHDEP) -I$(LIBOGC_INC) -Isrc -DNH_PLATFORM_WII
+LDFLAGS  := -g $(MACHDEP) -Wl,-Map,$(TARGET).map
+LIBS     := -L$(LIBOGC_LIB) -lwiiuse -lbte -lfat -lasnd -logc -lm
+
+.PHONY: all
+all: $(TARGET).dol
+
+$(TARGET).dol: $(TARGET).elf
+	@echo "elf2dol $(notdir $@)"
+	@elf2dol $< $@
+
+$(TARGET).elf: $(OBJECTS)
+	@echo "link $(notdir $@)"
+	@$(CC) $(OBJECTS) $(LDFLAGS) $(LIBS) -o $@
+
+$(BUILD)/%.o: %.c
+	@mkdir -p $(dir $@)
+	@echo "cc $<"
+	@$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+-include $(DEPENDS)

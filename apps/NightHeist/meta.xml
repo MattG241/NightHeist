@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+  <name>Night Heist</name>
+  <coder>MattG241</coder>
+  <version>0.0.1 (phase 0)</version>
+  <release_date>20261019000000</release_date>
+  <short_description>First-person stealth heists</short_description>
+  <long_description>Night Heist is a first-person stealth heist game for the Wii.
+
+Phase 0 toolchain build: a lit, textured test scene with a pointer-aimed torch and a live readout of Wii Remote pointer and Nunchuk input.
+
+Controls: pointer aims the torch, Nunchuk stick moves, Z crouch, tilt Nunchuk to lean, B torch on/off, A click + rumble, 1/2 change stress-test load, C spin speed, + pause, HOME exit.</long_description>
+</app>
