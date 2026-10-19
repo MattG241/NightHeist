@@ -57,10 +57,10 @@ void ui_menu_draw(const UiMenu *m, int sel)
 void ui_draw_controls(float y)
 {
     static const char *const rows[][2] = {
-        { "Nunchuk stick", "move" },
-        { "Pointer", "look and aim; turn at the screen edge" },
-        { "Z", "crouch (quieter, harder to see)" },
-        { "Tilt the Nunchuk", "lean round corners" },
+        { "Nunchuk stick", "up/down: walk   left/right: turn (Simple)" },
+        { "Pointer", "aim the torch; look up or down at the screen edge" },
+        { "Z", "sneak (quieter, harder to see)" },
+        { "D-pad down (hold)", "run (loud!)" },
         { "C", "use, open, take (hold for timed actions)" },
         { "A", "use the gadget, or take down from behind" },
         { "B", "torch on and off; back in menus" },
@@ -77,6 +77,6 @@ void ui_draw_controls(float y)
         text_draw(316, ry + 3, 1, FG, rows[i][1]);
     }
     float ty = y + 28 + 22.0f * 11 + 4;
-    ui_centered(ty, 1, DIM, "Locks: twist the remote to find each pin, A to set it.");
-    ui_centered(ty + 12, 1, DIM, "Stay in the dark, move slowly, and keep your torch off near guards.");
+    ui_centered(ty, 1, DIM, "Follow the yellow marker; GO (top left) says what to do next.");
+    ui_centered(ty + 12, 1, DIM, "Pointer turning instead: SETTINGS > Controls in the safehouse.");
 }

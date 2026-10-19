@@ -105,6 +105,7 @@ typedef struct NhCampaign {
     NhJobOffer board[JOB_BOARD_MAX];
     uint8_t board_n;
     uint32_t board_gen;          /* how many boards have been made */
+    uint32_t tips_seen;          /* first-time tips already shown (bit per tip) */
     uint8_t crew_selected;       /* bit per member brought on the next job */
 } NhCampaign;
 

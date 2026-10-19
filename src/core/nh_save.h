@@ -8,7 +8,7 @@
 #include "nh_campaign.h"
 #include "nh_player.h"
 
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2 /* 2: control scheme, tips seen */
 #define SAVE_MAX_BYTES 4096
 
 typedef struct NhSaveSettings {

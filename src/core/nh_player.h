@@ -10,7 +10,16 @@
 
 #include "nh_level.h"
 
+/* Control schemes.
+ * SIMPLE: the Nunchuk stick walks (up/down) and turns (left/right); the
+ *   pointer only aims the torch and looks up or down near the top and
+ *   bottom of the screen.
+ * POINTER: the stick walks and strafes; pointing past the edges of a box
+ *   in the middle of the screen turns (classic Wii shooter). */
+enum { NH_CONTROLS_SIMPLE, NH_CONTROLS_POINTER, NH_CONTROLS_COUNT };
+
 typedef struct NhControlSettings {
+    int scheme;           /* NH_CONTROLS_* */
     float ir_smoothing;   /* 0..1, higher = smoother pointer (more lag) */
     float box_w, box_h;   /* turn box as a fraction of the screen, 0.1..0.9 */
     float turn_speed;     /* max yaw speed in rad/s at the screen edge */
@@ -25,6 +34,8 @@ typedef struct NhPlayerInput {
     bool ir_valid;
     float ir_x, ir_y;       /* 640x480 pointer */
     float move_x, move_y;   /* stick, -1..1 (+y forward) */
+    float turn;             /* SIMPLE scheme: -1..1, + = turn right */
+    bool run_held;          /* running is always a choice (loud) */
     float lean;             /* -1..1 */
     bool crouch_held, crouch_pressed;
     bool frozen;            /* in a minigame/menu: no movement, no turning */
@@ -61,6 +72,8 @@ typedef struct NhPlayer {
     NhVec3 pos, prev_pos;  /* feet */
     float vel_y;
     float yaw, pitch, prev_yaw, prev_pitch;
+    float yaw_vel;         /* SIMPLE scheme: turning speed, eased */
+    float move_x_s, move_y_s; /* stick after easing (no instant starts or stops) */
     float cursor_x, cursor_y; /* smoothed pointer, screen pixels */
     float crouch;          /* 0..1 */
     bool crouch_latched;

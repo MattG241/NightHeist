@@ -117,8 +117,18 @@ void job_init(NhJob *j, const Level *L, const NhPlan *plan, uint32_t seed)
             break;
         default:
             q = add_obj(j, OBJ_PHOTO, true, ent, 0, 200);
-            if (q)
-                snprintf(q->text, sizeof(q->text), "Photograph the piece (floor %d)", e->floor);
+            if (q) {
+                /* Name what to photograph; a second one of the same says so. */
+                bool again = false;
+                for (int k = 0; k < j->nobj - 1; k++)
+                    again |= j->obj[k].type == OBJ_PHOTO && j->obj[k].ent >= 0 &&
+                             !strcmp(job_loot_name(L, plan, j->obj[k].ent), job_loot_name(L, plan, ent));
+                const char *nm = job_loot_name(L, plan, ent);
+                if (!strncmp(nm, "the ", 4))
+                    nm += 4;
+                snprintf(q->text, sizeof(q->text), "Photograph %s %s (floor %d)", again ? "another" : "the", nm,
+                         e->floor);
+            }
             break;
         }
     }

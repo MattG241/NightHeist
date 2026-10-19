@@ -10,6 +10,7 @@
 #include "core/nh_fixedstep.h"
 #include "core/nh_proptab.h"
 #include "gadgets.h"
+#include "guide.h"
 #include "hud.h"
 #include "interact.h"
 #include "res.h"
@@ -111,7 +112,10 @@ bool heist_start(Heist *h, const NhGenParams *job, const NhCampaign *camp, const
     if (offer) {
         h->campaign = true;
         h->offer = *offer;
+        h->screen = SCR_BRIEF; /* the job card first */
     }
+    if (camp)
+        h->tips_seen = camp->tips_seen;
     if (job) {
         h->generated = true;
         h->job = *job;
@@ -510,6 +514,7 @@ static void player_after(Heist *h, const GameSettings *gs)
     me->light_level = NH_CLAMP(me->light_level, 0.0f, 1.0f);
     if (me->status_ticks > 0)
         me->status_ticks--;
+    guide_tick(h);
 }
 
 /* Cameras, lasers, alarmed doors; guards turning the power back on; police. */
@@ -738,8 +743,14 @@ static void update_player(Heist *h, const NhInput *in, GameSettings *gs)
     pi.ir_y = in->ir_y;
     float slow = (me->carrying >= 0 || me->holding >= 0) ? h->perks.carry_speed : 1.0f;
     me->player.noise_scale = h->perks.noise_scale;
-    pi.move_x = in->stick_x * slow;
-    pi.move_y = in->stick_y * slow;
+    if (gs->controls.scheme == NH_CONTROLS_SIMPLE) {
+        pi.move_y = in->stick_y * slow;
+        pi.turn = in->stick_x;
+    } else {
+        pi.move_x = in->stick_x * slow;
+        pi.move_y = in->stick_y * slow;
+    }
+    pi.run_held = (in->held & NH_BTN_DOWN) != 0;
     pi.lean = NH_CLAMP(in->nunchuk_roll / NH_DEG2RAD(30.0f), -1.0f, 1.0f);
     pi.crouch_held = (in->held & NH_BTN_Z) != 0;
     pi.crouch_pressed = (in->pressed & NH_BTN_Z) != 0;
@@ -833,6 +844,14 @@ void heist_tick(Heist *h, const NhInput in[NH_MAX_PLAYERS], GameSettings *gs)
                 h->job.security = 2;
             }
             h->want_rebuild = true;
+        }
+        return;
+    }
+    if (h->screen == SCR_BRIEF) {
+        h->tick++;
+        if (any_pressed & NH_BTN_A) {
+            audio_play(SFX_UI_SELECT, 0.5f, 0.0f, 1.0f);
+            h->screen = SCR_PLAY;
         }
         return;
     }
@@ -1089,6 +1108,6 @@ void heist_render(Heist *h, float alpha, const GameSettings *gs, float fps)
         text_rect(0, GFX_SCREEN_H / 2 - 1, GFX_SCREEN_W, 2, nh_rgba(0, 0, 0, 255));
     }
     h->me = &h->pl[0];
-    hud_draw_overlay(h);
+    hud_draw_overlay(h, gs);
     gfx_end_frame();
 }

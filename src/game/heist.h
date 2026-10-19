@@ -42,7 +42,7 @@ typedef struct Action {
     bool blocked;       /* shown greyed out (e.g. locked without a key) */
 } Action;
 
-typedef enum Screen { SCR_PLAY, SCR_MAP, SCR_OBJECTIVES, SCR_SUMMARY, SCR_PAUSE } Screen;
+typedef enum Screen { SCR_PLAY, SCR_MAP, SCR_OBJECTIVES, SCR_SUMMARY, SCR_PAUSE, SCR_BRIEF } Screen;
 typedef enum Minigame { MG_KIND_NONE, MG_KIND_LOCK, MG_KIND_SAFE, MG_KIND_HACK } MinigameKind;
 
 typedef struct Projectile {
@@ -97,6 +97,16 @@ typedef struct HeistPlayer {
     bool cuffed;            /* caught: waits for the partner to free them */
     float cuffed_t;         /* seconds since cuffed */
     float aspect;           /* this player's view shape, for aiming */
+    /* Guidance (guide.c) */
+    NhVec3 guide[3];        /* the next corners of the route to the goal */
+    int nguide;
+    float guide_len;        /* metres along the route */
+    int guide_floor;        /* floor the goal is on */
+    float guide_t;          /* until the route is worked out again */
+    bool left_start;        /* has moved away from the van at least once */
+    int tip;                /* tip on screen (GuideTip + 1), 0 none */
+    float tip_t;
+    float lit_t;            /* seconds spent standing in bright light */
 } HeistPlayer;
 
 typedef struct Heist {
@@ -149,6 +159,7 @@ typedef struct Heist {
     bool subtitles, summary_audio;
     int pause_sel, pause_page; /* page 0 menu, 1 controls, 2 confirm abandoning */
     int pause_owner;           /* the player who opened the pause menu */
+    uint32_t tips_seen;        /* first-time tips shown (copied back to the campaign) */
 } Heist;
 
 /* Start a job: a generated building, or the hand-built test level if job is NULL. */

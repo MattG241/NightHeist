@@ -6,6 +6,7 @@
 #include "app.h"
 #include "core/nh_rooms.h"
 #include "res.h"
+#include "guide.h"
 #include "text.h"
 #include "ui.h"
 
@@ -248,8 +249,12 @@ static void draw_hiding(void)
         text_rect(0, 150 + (float)k * 32, 640, 12, nh_rgba(0, 0, 0, 200));
 }
 
-void hud_draw_overlay(const Heist *h)
+void hud_draw_overlay(const Heist *h, const GameSettings *gs)
 {
+    if (h->screen == SCR_BRIEF) {
+        guide_draw_briefing(h, gs);
+        return;
+    }
     if (h->screen == SCR_SUMMARY) {
         hud_draw_summary(h);
         return;
@@ -277,7 +282,7 @@ void hud_draw_overlay(const Heist *h)
 void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
 {
     s_aspect = h->me->aspect;
-    if (h->screen == SCR_SUMMARY || h->screen == SCR_PAUSE)
+    if (h->screen == SCR_SUMMARY || h->screen == SCR_PAUSE || h->screen == SCR_BRIEF)
         return; /* drawn once, over the whole screen */
     if (h->me->view == SCR_MAP) {
         hud_draw_map(h);
@@ -336,6 +341,8 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
         centered(340, 2, FG, "A  Takedown");
     else
         draw_prompt(h);
+    if (h->generated)
+        guide_draw(h, view, h->me->aspect);
     if (h->subtitle_ticks > 0) {
         float w = text_width(h->subtitle, 2);
         text_rect(320 - w * 0.5f - 6, 394, w + 12, 22, nh_rgba(0, 0, 0, 150));

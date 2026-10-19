@@ -176,10 +176,13 @@ void test_bake(void)
     CHECK(under > corner);
 }
 
+static int s_scheme = NH_CONTROLS_SIMPLE;
+
 static void run_ticks(NhPlayer *p, const Level *L, NhPlayerInput *in, int n)
 {
     NhControlSettings cs;
     nh_controls_default(&cs);
+    cs.scheme = s_scheme;
     for (int i = 0; i < n; i++)
         nh_player_tick(p, L, in, &cs, 4.0f / 3.0f, 62.0f);
 }
@@ -193,7 +196,8 @@ void test_player(void)
     in.ir_x = 320;
     in.ir_y = 240;
 
-    /* Pointer inside the box: no turning. Past the right edge: turns right. */
+    /* Pointer scheme. Pointer inside the box: no turning. Past the right edge: turns right. */
+    s_scheme = NH_CONTROLS_POINTER;
     nh_player_init(&p, nh_v3(12, 0, 10), 0.0f);
     run_ticks(&p, L, &in, 30);
     CHECK_NEAR(p.yaw, 0.0, 1e-5);
@@ -206,6 +210,40 @@ void test_player(void)
     run_ticks(&p, L, &in, 30);
     CHECK_NEAR(p.yaw, yaw, 1e-6);
     CHECK_NEAR(p.cursor_x, cx, 1e-6);
+    s_scheme = NH_CONTROLS_SIMPLE;
+
+    /* Simple scheme: the pointer at the edge doesn't turn; the stick does,
+     * easing in, and stops easing out. */
+    nh_player_init(&p, nh_v3(12, 0, 10), 0.0f);
+    in = (NhPlayerInput){ 0 };
+    in.ir_valid = true;
+    in.ir_x = 630;
+    in.ir_y = 240;
+    run_ticks(&p, L, &in, 30);
+    CHECK_NEAR(p.yaw, 0.0, 1e-5);
+    in.turn = 1.0f;
+    run_ticks(&p, L, &in, 1);
+    float first = -p.yaw;
+    run_ticks(&p, L, &in, 59);
+    CHECK(first > 0.0f && first < 0.01f); /* no snap */
+    CHECK(p.yaw < -1.5f);                 /* about 2.6 rad/s once up to speed */
+    in.turn = 0.0f;
+    yaw = p.yaw;
+    run_ticks(&p, L, &in, 60);
+    CHECK(p.yaw < yaw && p.yaw > yaw - 0.6f); /* glides to a stop */
+    float settled = p.yaw;
+    run_ticks(&p, L, &in, 30);
+    CHECK_NEAR(p.yaw, settled, 1e-5);
+
+    /* Full stick walks; only holding run runs (the open run up to the stairs). */
+    nh_player_init(&p, nh_v3(9.0f, 0, 17.0f), NH_PI);
+    in = (NhPlayerInput){ 0 };
+    in.move_y = 1.0f;
+    run_ticks(&p, L, &in, 20);
+    CHECK(p.speed > 2.0f && p.speed < 2.6f);
+    in.run_held = true;
+    run_ticks(&p, L, &in, 15);
+    CHECK(p.speed > 4.0f);
 
     /* Walking into a wall stops at the wall. */
     nh_player_init(&p, nh_v3(16, 0, 9), -NH_PI * 0.5f); /* facing +X toward the corridor wall */

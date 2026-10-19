@@ -16,6 +16,7 @@
 
 void nh_controls_default(NhControlSettings *s)
 {
+    s->scheme = NH_CONTROLS_SIMPLE;
     s->ir_smoothing = 0.35f;
     s->box_w = 0.55f;
     s->box_h = 0.5f;
@@ -86,15 +87,28 @@ void nh_player_tick(NhPlayer *p, const Level *L, const NhPlayerInput *in, const 
     const float dt = NH_TICK_DT;
 
     /* ---- look ---- */
+    bool simple = cs->scheme == NH_CONTROLS_SIMPLE;
+    float pitch_sign = cs->invert_y ? 1.0f : -1.0f;
     if (in->ir_valid && !in->frozen) {
         float k = 1.0f - NH_CLAMP(cs->ir_smoothing, 0.0f, 0.95f);
         p->cursor_x = nh_lerpf(p->cursor_x, NH_CLAMP(in->ir_x, 0.0f, 640.0f), k);
         p->cursor_y = nh_lerpf(p->cursor_y, NH_CLAMP(in->ir_y, 0.0f, 480.0f), k);
         float tx, ty;
         nh_player_turn_amount(p, cs, &tx, &ty);
-        float pitch_sign = cs->invert_y ? 1.0f : -1.0f;
-        p->yaw = nh_wrap_angle(p->yaw - tx * cs->turn_speed * dt);
+        if (!simple)
+            p->yaw = nh_wrap_angle(p->yaw - tx * cs->turn_speed * dt);
         p->pitch = NH_CLAMP(p->pitch + pitch_sign * ty * cs->turn_speed * 0.7f * dt, -PITCH_LIMIT, PITCH_LIMIT);
+    } else if (simple && !in->frozen) {
+        p->pitch = nh_approach(p->pitch, 0.0f, 0.8f * dt); /* no pointer: the view levels out */
+    }
+    if (simple) {
+        /* The stick turns: gentle near the centre, eased in and out. */
+        float t = in->frozen ? 0.0f : NH_CLAMP(in->turn, -1.0f, 1.0f);
+        float target = -(0.35f * t + 0.65f * t * fabsf(t)) * cs->turn_speed;
+        p->yaw_vel = nh_approach(p->yaw_vel, target, 9.0f * dt);
+        p->yaw = nh_wrap_angle(p->yaw + p->yaw_vel * dt);
+    } else {
+        p->yaw_vel = 0.0f;
     }
 
     /* ---- stance ---- */
@@ -115,7 +129,12 @@ void nh_player_tick(NhPlayer *p, const Level *L, const NhPlayerInput *in, const 
     p->crouch = nh_approach(p->crouch, crouch_target, dt * 5.0f);
 
     /* ---- move ---- */
-    float mx = in->frozen ? 0.0f : in->move_x, my = in->frozen ? 0.0f : in->move_y;
+    /* Ease the stick so starts and stops take a moment (about 0.15 s). */
+    float tmx = in->frozen ? 0.0f : NH_CLAMP(in->move_x, -1.0f, 1.0f);
+    float tmy = in->frozen ? 0.0f : NH_CLAMP(in->move_y, -1.0f, 1.0f);
+    p->move_x_s = nh_approach(p->move_x_s, tmx, 7.0f * dt);
+    p->move_y_s = nh_approach(p->move_y_s, tmy, 7.0f * dt);
+    float mx = p->move_x_s, my = p->move_y_s;
     float mag = sqrtf(mx * mx + my * my);
     if (mag > 1.0f) {
         mx /= mag;
@@ -128,7 +147,7 @@ void nh_player_tick(NhPlayer *p, const Level *L, const NhPlayerInput *in, const 
     else if (p->crouch > 0.5f)
         speed = CROUCH_SPEED;
     else
-        speed = mag > 0.9f ? RUN_SPEED : WALK_SPEED;
+        speed = in->run_held && mag > 0.3f ? RUN_SPEED : WALK_SPEED;
     /* Forward is -Z rotated by yaw; right is +X rotated by yaw. */
     float s = sinf(p->yaw), c = cosf(p->yaw);
     float vx = (mx * c - my * s) * speed, vz = (-mx * s - my * c) * speed;

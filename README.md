@@ -77,12 +77,19 @@ design, [PACING.md](PACING.md) for the campaign curve and
 
 ## Controls
 
+Two control schemes, set in the safehouse under SETTINGS → Controls:
+
+- **Simple** (the default): the stick walks and turns.
+- **Pointer**: the classic Wii shooter style, where pointing past the edge
+  of the screen turns you.
+
 | Wii | Desktop | Action |
 |---|---|---|
-| Pointer | Mouse | Look and aim; turn by pointing at the screen edge |
-| Nunchuk stick | WASD | Move |
-| Z | Ctrl | Crouch: quieter and harder to see |
-| Tilt the Nunchuk | Q / E | Lean round corners |
+| Nunchuk stick up/down | W / S | Walk forward and back |
+| Nunchuk stick left/right | A / D | **Simple:** turn smoothly. **Pointer:** step sideways |
+| Pointer | Mouse | Aim the torch and pick what C uses. Look up or down at the top or bottom edge (**Pointer:** turn at the side edges) |
+| Z | Ctrl | Sneak: quieter, harder to see |
+| D-pad down (hold) | ↓ | Run. It's loud, and only happens when you ask for it |
 | C | F | Use, open, take (hold for timed actions) |
 | A | Left mouse | Use the gadget; take a guard down from behind; select in menus |
 | B | Right mouse | Torch on or off; back in menus |
@@ -92,10 +99,22 @@ design, [PACING.md](PACING.md) for the campaign curve and
 | Twist the remote | [ and ] (\ levels it) | Lockpick and safe dial |
 | HOME | Esc | Pause on a job; back to the title from the safehouse |
 
+How a job goes:
+
+- Every campaign job starts with a **briefing** card: the goal, the bonus
+  objectives and how to play.
+- During the job, **GO:** at the top left always says what to do next and
+  how far away it is.
+- A **yellow marker** follows the walking route to it: the target first,
+  then back to the van. When it's off screen, an arrow at the edge (or
+  "TURN AROUND") points the way.
+- The first time each new thing comes up, a **tip** explains it: guards,
+  locks, cameras, light, hiding.
+
 On a job:
 
 - Stay out of the light.
-- Crouch near guards.
+- Sneak near guards.
 - Keep your torch off when someone could see the beam.
 - Watch the detection markers above guards' heads.
 

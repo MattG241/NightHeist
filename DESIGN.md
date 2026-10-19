@@ -843,3 +843,55 @@ camera, and any player who crosses a beam.
 
 **Performance on Wii** (Dolphin, large bank at security 3, both views
 outside): 59.9 fps, 5.3 ms CPU, 81k triangles in 155 draws.
+
+## 15. Controls and guidance (from the first Wii playtest)
+
+The first real-hardware playtest found three problems.
+
+**Movement.**
+- Holding the stick past 90% used to start a sprint. On a Nunchuk that
+  happens all the time, so players were sprinting (and making noise)
+  without meaning to.
+- Some Nunchuks (especially third-party ones) report nonsense stick
+  calibration, so one player ran on their own.
+
+Fixes:
+- Running is now only while D-pad down is held.
+- Stick calibration is sanity-checked. A bad one is replaced by standard
+  values centred on where the stick rested when the Nunchuk was plugged in.
+- The dead zone is now 0.2.
+- Starts and stops ease over about 0.15 s.
+
+**Turning.** The default scheme is now **Simple**:
+- The stick's left and right axis turns the player. The turn rate is eased
+  (rate ≈ 0.35·t + 0.65·t·|t| of the turn speed, approached at 9 rad/s²),
+  so small pushes give fine turns and turning glides to a stop.
+- The pointer only aims the torch and pitches the view at the top or
+  bottom edge. With no pointer the view levels out.
+- The classic pointer-edge turning is still available as **Pointer**.
+- The scheme is saved with the settings, which made this save format
+  version 2. Version-1 saves still load, and a test checks it.
+
+**Clarity (`guide.c`).**
+- **Briefing:** a card before each campaign job showing the goal, the bonus
+  objectives, a four-step "how" and the controls for the current scheme.
+- **GO line:** always at the top left. It shows the current goal and the
+  distance, with "up/down to floor N" when the goal is on another floor.
+  The goal is the main objective, then "Get back to the van" once the
+  target is done or in hand. In co-op it shows "Free your partner" while
+  one of you is cuffed.
+- **Route marker:**
+  - `nh_nav_path` from the player to the goal is worked out twice a
+    second, and the marker sits over the next corner of the route.
+  - Off screen, a side arrow points the way, or "TURN AROUND" when the
+    route is behind you.
+- **Tips:** one-time tips for the marker, guards, locks, being noticed,
+  cameras, getting the target, standing in light, and hiding. Which tips
+  have been seen is saved in the campaign.
+- **Leave prompt:** "Leave" at the van is offered only after you've moved
+  away from it once (or finished the job). The misleading "Abort" prompt
+  at the start is gone.
+- **Objective names:** photo objectives name what to photograph, and a
+  second one says "another".
+- **Settings:** the music and sound volumes, saved since Phase 8, now have
+  rows on the SETTINGS tab.

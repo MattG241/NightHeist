@@ -290,6 +290,7 @@ int nh_app_run(const NhPlatformArgs *args)
             camp_finish_job(&s_camp, &s_offer, &s_heist.result, &s_heist.state, &s_heist.world.L, &s_heist.plan,
                             s_heist.plan.fingerprint, s_heist.plan.setpieces, &pay);
             s_camp.play_time += s_heist.state.time;
+            s_camp.tips_seen |= s_heist.tips_seen;
             playlog(&s_heist, &pay);
             static const char *const k_title[] = { "", "PAYDAY", "PARTIAL TAKE", "WALKED AWAY", "BUSTED" };
             hideout_payday(&s_hideout, &pay, k_title[s_heist.result.outcome]);

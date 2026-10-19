@@ -17,6 +17,8 @@ static const char *const k_tabs[TAB_COUNT] = { "JOBS", "CREW", "GEAR", "FENCE", 
 
 #define ROW_Y0 96.0f
 #define ROW_H 54.0f
+#define SETTING_ROWS 13
+#define SETTING_H 26.0f
 
 void hideout_init(Hideout *ho)
 {
@@ -49,7 +51,7 @@ static int rows_in_tab(const Hideout *ho, const NhCampaign *c)
     case TAB_CREW: return CR_COUNT;
     case TAB_GEAR: return UP_COUNT;
     case TAB_FENCE: return 1;
-    default: return 10;
+    default: return SETTING_ROWS;
     }
 }
 
@@ -57,7 +59,7 @@ static float row_h(const Hideout *ho)
 {
     if (ho->plan >= 0)
         return 26.0f;
-    return ho->tab == TAB_JOBS || ho->tab == TAB_CREW ? ROW_H : 34.0f;
+    return ho->tab == TAB_JOBS || ho->tab == TAB_CREW ? ROW_H : ho->tab == TAB_SETTINGS ? SETTING_H : 34.0f;
 }
 
 static float row_y0(const Hideout *ho) { return ho->plan >= 0 ? 214.0f : ROW_Y0; }
@@ -65,20 +67,26 @@ static float row_y0(const Hideout *ho) { return ho->plan >= 0 ? 214.0f : ROW_Y0;
 /* Settings rows: label and value text; A raises, - lowers. */
 static void setting_text(const NhSaveSettings *s, int i, char *label, char *val, size_t n)
 {
-    static const char *const names[10] = { "Pointer smoothing", "Turn box width", "Turn box height", "Turn speed",
-                                            "Crouch", "Invert look", "Rumble", "Subtitles", "Difficulty",
-                                            "Playtest log (SD)" };
+    static const char *const names[SETTING_ROWS] = {
+        "Controls",    "Turn speed",   "Pointer smoothing", "Turn box width", "Turn box height",
+        "Crouch",      "Invert look",  "Rumble",            "Subtitles",      "Music volume",
+        "Sound volume", "Difficulty",  "Playtest log (SD)",
+    };
     snprintf(label, n, "%s", names[i]);
+    const NhControlSettings *cs = &s->controls;
     switch (i) {
-    case 0: snprintf(val, n, "%.2f", (double)s->controls.ir_smoothing); break;
-    case 1: snprintf(val, n, "%.2f", (double)s->controls.box_w); break;
-    case 2: snprintf(val, n, "%.2f", (double)s->controls.box_h); break;
-    case 3: snprintf(val, n, "%.1f", (double)s->controls.turn_speed); break;
-    case 4: snprintf(val, n, "%s", s->controls.crouch_toggle ? "toggle" : "hold"); break;
-    case 5: snprintf(val, n, "%s", s->controls.invert_y ? "on" : "off"); break;
-    case 6: snprintf(val, n, "%s", s->rumble ? "on" : "off"); break;
-    case 7: snprintf(val, n, "%s", s->subtitles ? "on" : "off"); break;
-    case 8: snprintf(val, n, "%s", s->difficulty == 0 ? "easy" : s->difficulty == 1 ? "normal" : "hard"); break;
+    case 0: snprintf(val, n, "%s", cs->scheme == NH_CONTROLS_SIMPLE ? "simple: stick turns" : "pointer turns"); break;
+    case 1: snprintf(val, n, "%.1f", (double)cs->turn_speed); break;
+    case 2: snprintf(val, n, "%.2f", (double)cs->ir_smoothing); break;
+    case 3: snprintf(val, n, "%.2f", (double)cs->box_w); break;
+    case 4: snprintf(val, n, "%.2f", (double)cs->box_h); break;
+    case 5: snprintf(val, n, "%s", cs->crouch_toggle ? "toggle" : "hold"); break;
+    case 6: snprintf(val, n, "%s", cs->invert_y ? "on" : "off"); break;
+    case 7: snprintf(val, n, "%s", s->rumble ? "on" : "off"); break;
+    case 8: snprintf(val, n, "%s", s->subtitles ? "on" : "off"); break;
+    case 9: snprintf(val, n, "%d", s->music); break;
+    case 10: snprintf(val, n, "%d", s->sfx); break;
+    case 11: snprintf(val, n, "%s", s->difficulty == 0 ? "easy" : s->difficulty == 1 ? "normal" : "hard"); break;
     default: snprintf(val, n, "%s", s->playlog ? "on" : "off"); break;
     }
 }
@@ -87,15 +95,18 @@ static void adjust_setting(NhSaveSettings *s, int i, int dir)
 {
     NhControlSettings *cs = &s->controls;
     switch (i) {
-    case 0: cs->ir_smoothing = NH_CLAMP(cs->ir_smoothing + 0.05f * (float)dir, 0.0f, 0.9f); break;
-    case 1: cs->box_w = NH_CLAMP(cs->box_w + 0.05f * (float)dir, 0.2f, 0.9f); break;
-    case 2: cs->box_h = NH_CLAMP(cs->box_h + 0.05f * (float)dir, 0.2f, 0.9f); break;
-    case 3: cs->turn_speed = NH_CLAMP(cs->turn_speed + 0.2f * (float)dir, 1.0f, 6.0f); break;
-    case 4: cs->crouch_toggle = !cs->crouch_toggle; break;
-    case 5: cs->invert_y = !cs->invert_y; break;
-    case 6: s->rumble = !s->rumble; break;
-    case 7: s->subtitles = !s->subtitles; break;
-    case 8: s->difficulty = (uint8_t)((s->difficulty + 3 + dir) % 3); break;
+    case 0: cs->scheme = (cs->scheme + NH_CONTROLS_COUNT + dir) % NH_CONTROLS_COUNT; break;
+    case 1: cs->turn_speed = NH_CLAMP(cs->turn_speed + 0.2f * (float)dir, 1.0f, 6.0f); break;
+    case 2: cs->ir_smoothing = NH_CLAMP(cs->ir_smoothing + 0.05f * (float)dir, 0.0f, 0.9f); break;
+    case 3: cs->box_w = NH_CLAMP(cs->box_w + 0.05f * (float)dir, 0.2f, 0.9f); break;
+    case 4: cs->box_h = NH_CLAMP(cs->box_h + 0.05f * (float)dir, 0.2f, 0.9f); break;
+    case 5: cs->crouch_toggle = !cs->crouch_toggle; break;
+    case 6: cs->invert_y = !cs->invert_y; break;
+    case 7: s->rumble = !s->rumble; break;
+    case 8: s->subtitles = !s->subtitles; break;
+    case 9: s->music = (uint8_t)NH_CLAMP((int)s->music + dir, 0, 10); break;
+    case 10: s->sfx = (uint8_t)NH_CLAMP((int)s->sfx + dir, 0, 10); break;
+    case 11: s->difficulty = (uint8_t)((s->difficulty + 3 + dir) % 3); break;
     default: s->playlog = !s->playlog; break;
     }
 }
@@ -403,15 +414,15 @@ static void draw_fence(const Hideout *ho, const NhCampaign *c)
 
 static void draw_settings(const Hideout *ho, const NhSaveSettings *s)
 {
-    for (int i = 0; i < 10; i++) {
-        float y = ROW_Y0 + (float)i * 34;
-        row_box(ho, i, y, 34);
+    for (int i = 0; i < SETTING_ROWS; i++) {
+        float y = ROW_Y0 + (float)i * SETTING_H;
+        row_box(ho, i, y, SETTING_H);
         char label[48], val[48];
         setting_text(s, i, label, val, sizeof(label));
-        text_draw(32, y + 8, 2, FG, label);
-        text_draw(420, y + 8, 2, HI, val);
+        text_draw(32, y + 5, 2, FG, label);
+        text_draw(330, y + 5, 2, HI, val);
     }
-    text_draw(32, 446, 1, DIM, "A: raise / next    -: lower");
+    text_draw(32, 448, 1, DIM, "A: raise / next    -: lower");
 }
 
 void hideout_render(const Hideout *ho, const NhCampaign *c, const NhSaveSettings *s)

@@ -58,6 +58,26 @@ void test_save(void)
     newer[5] = SAVE_VERSION + 1;
     CHECK(!save_decode(newer, n, &c2, &s2, why, sizeof(why)) && strstr(why, "newer"));
     CHECK(nh_crc32("123456789", 9) == 0xCBF43926u);
+    /* A version-1 save (before the control scheme and tips) still loads:
+     * cut those fields out of a v2 payload and fix up the header. */
+    c.tips_seen = 0xABCDu;
+    s.controls.scheme = NH_CONTROLS_POINTER;
+    n = save_encode(&c, &s, buf, sizeof(buf));
+    const size_t scheme_at = 16 + 16 + 8;
+    const size_t tips_at = scheme_at + 1 + 12 + DI_COUNT * 3 + 4 + CR_COUNT + UP_COUNT + LS_COUNT * 2 + 1 +
+                           HISTORY_MAX * 4 + 24 + 6 + 4 + 4 + 4;
+    uint8_t v1[SAVE_MAX_BYTES];
+    size_t m = 0;
+    for (size_t i = 0; i < n; i++)
+        if (i != scheme_at && (i < tips_at || i >= tips_at + 4))
+            v1[m++] = buf[i];
+    uint32_t plen = (uint32_t)(m - 16), crc = nh_crc32(v1 + 16, plen);
+    v1[4] = 0, v1[5] = 1;
+    v1[8] = (uint8_t)(plen >> 24), v1[9] = (uint8_t)(plen >> 16), v1[10] = (uint8_t)(plen >> 8), v1[11] = (uint8_t)plen;
+    v1[12] = (uint8_t)(crc >> 24), v1[13] = (uint8_t)(crc >> 16), v1[14] = (uint8_t)(crc >> 8), v1[15] = (uint8_t)crc;
+    CHECK(save_decode(v1, m, &c2, &s2, why, sizeof(why)));
+    CHECK(c2.money == 98765 && c2.tips_seen == 0 && s2.controls.scheme == NH_CONTROLS_SIMPLE);
+    CHECK(c2.board_n == c.board_n && strcmp(c2.board[0].name, c.board[0].name) == 0);
 }
 
 void test_board(void)

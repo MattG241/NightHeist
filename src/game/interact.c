@@ -238,8 +238,8 @@ void interact_find(Heist *h, const GameSettings *gs)
         set_act(a, ACT_FREE, mate->index, 2.0f, false, "Free your partner");
         return;
     }
-    /* Getaway */
-    if (here && (here->flags & LV_C_EXTRACT) && p->floor == 0) {
+    /* Getaway (once you've actually been somewhere, or have the goods) */
+    if (here && (here->flags & LV_C_EXTRACT) && p->floor == 0 && (h->me->left_start || job_main_done(j))) {
         if (mate && mate->cuffed)
             set_act(a, ACT_EXTRACT, -1, 1.0f, true, "Free your partner first");
         else

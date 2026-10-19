@@ -118,9 +118,10 @@ static void write_settings(W *w, const NhSaveSettings *s)
     w8(w, s->sfx);
     w8(w, s->difficulty);
     w8(w, s->playlog);
+    w8(w, (uint32_t)s->controls.scheme);
 }
 
-static void read_settings(R *r, NhSaveSettings *s)
+static void read_settings(R *r, NhSaveSettings *s, int version)
 {
     s->controls.ir_smoothing = rf_clamp(r, 0.0f, 0.95f);
     s->controls.box_w = rf_clamp(r, 0.1f, 0.9f);
@@ -134,6 +135,7 @@ static void read_settings(R *r, NhSaveSettings *s)
     s->sfx = (uint8_t)r8_max(r, 10);
     s->difficulty = (uint8_t)r8_max(r, 2);
     s->playlog = (uint8_t)r8(r);
+    s->controls.scheme = version >= 2 ? (int)r8_max(r, NH_CONTROLS_COUNT - 1) : NH_CONTROLS_SIMPLE;
 }
 
 static void write_offer(W *w, const NhJobOffer *o)
@@ -202,6 +204,7 @@ static void write_campaign(W *w, const NhCampaign *c)
     w32(w, c->total_earned);
     wf(w, c->play_time);
     w32(w, c->board_gen);
+    w32(w, c->tips_seen);
     w8(w, c->board_n);
     for (int i = 0; i < c->board_n; i++)
         write_offer(w, &c->board[i]);
@@ -209,7 +212,6 @@ static void write_campaign(W *w, const NhCampaign *c)
 
 static void read_campaign(R *r, NhCampaign *c, int version)
 {
-    (void)version; /* v1 is the only layout so far; later versions branch here */
     memset(c, 0, sizeof(*c));
     c->seed = r32(r);
     c->money = (int32_t)r32(r);
@@ -244,6 +246,7 @@ static void read_campaign(R *r, NhCampaign *c, int version)
     c->total_earned = r32(r);
     c->play_time = rf(r);
     c->board_gen = r32(r);
+    c->tips_seen = version >= 2 ? r32(r) : 0;
     c->board_n = (uint8_t)r8_max(r, JOB_BOARD_MAX);
     for (int i = 0; i < c->board_n; i++)
         read_offer(r, &c->board[i]);
@@ -295,7 +298,7 @@ bool save_decode(const uint8_t *buf, size_t len, NhCampaign *c, NhSaveSettings *
     R r = { buf + 16, 0, plen, true };
     NhSaveSettings st;
     NhCampaign cp;
-    read_settings(&r, &st);
+    read_settings(&r, &st, version);
     read_campaign(&r, &cp, version);
     if (!r.ok)
         FAIL("corrupt data");
