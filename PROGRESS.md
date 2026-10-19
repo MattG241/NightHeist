@@ -1,82 +1,123 @@
 # Progress
 
-## Current phase: 0, Toolchain (complete, awaiting hardware test)
+## Current phase: 3, Guards (complete); next is 4, the procedural generator
 
-### Done
+| Phase | Status |
+|---|---|
+| 0. Toolchain, both backends, test scene | Done |
+| 1. Asset pipeline, level model, FP controller, collision, renderer v2 | Done |
+| 2. Lighting: bake, projected torch, portals, transparency, frame pipelining | Done |
+| 3. Guards: nav, AI, skinned characters, guard torches, detection HUD | Done |
+| 4. Procedural generator (5 types × 3 sizes, 40+ set pieces, 10k-seed test) | Next |
+| 5–6. Interactables, gadgets, minigames, objectives, alarm/police, extraction | Pending |
+| 7–8. Hideout, crew, upgrades, fence, saves, districts, post-game, balance | Pending |
+| 9–10. Audio and music, UI and title, settings, performance audit, release | Pending |
 
-- Repo skeleton, Makefile targets: `desktop`, `test`, `wii`, `wii-docker`,
-  `assets`, `package`, `clean`.
-- Portable core (`src/core`): maths (GX-layout matrices), PCG32 RNG, arena
-  allocator, fixed-timestep accumulator, GX light model with libogc-identical
-  coefficient helpers, GX texture codec (I8/IA8/RGB565/RGBA8, tiled,
-  big-endian, mips), procedural meshes and textures, an original 5x7 font.
-- Platform interface (`platform.h`, `gfx.h`) and two backends:
-  - **Wii**: VIDEO/GX init (480p via the preferred mode, anamorphic 16:9 when
-    the console is set to widescreen), display-list meshes, hardware
-    per-vertex lights, batched 2D, WPAD pointer/buttons/Nunchuk/rumble, ASND,
-    libfat (data dir taken from `argv[0]` so USB launches work), reset/power
-    button handling.
-  - **Desktop**: SDL2 + GL 3.3 core, 640x480 offscreen EFB, GX lighting
-    equation per vertex, textures decoded from the same GX bytes, mouse +
-    WASD input mapping, an ASND-like 16-voice mixer, and
-    `--autotest/--frames/--screenshot` for automated runs.
-- Phase 0 test scene: a dark brick room, spinning lit and textured tori, a
-  pointer-aimed torch (GX hardware spotlight) that holds direction when IR is
-  lost, crouch, lean, click sound panned by pointer, rumble pulse, a stress
-  test (1/9/25/36/49 tori), and a live input/perf/memory/SD readout.
-- Unit tests: 9 suites, about 28k checks (maths, RNG golden values,
-  arena, timestep at 60/50 Hz, light model vs libogc formulas, texture codec
-  round trips, mesh winding vs normals, font, sim determinism and IR hold).
-  Clean under ASan and UBSan.
-- HBC packaging: `meta.xml` and a generated `icon.png` (128x48).
+## What exists
 
-### Verified
+**Build.**
+- Make targets: `desktop`, `test`, `wii` (or `wii-docker` with the
+  devkitPro image), `assets`, `package`, `clean`.
+- CI builds the desktop and Wii targets, runs the tests under ASan and
+  UBSan, and uploads the HBC package.
+
+**Core (`src/core`)**, portable C11 with no platform calls:
+- maths, PCG32, arenas, fixed 60 Hz timestep;
+- the GX light model;
+- the GX texture codec;
+- the asset formats (`.ntx`, `.nmd`, `.nan`) and pose blending and skinning;
+- the level model (cells, edges, doors, stairs, props, lights, raycasts,
+  cylinder collision);
+- the modular kit mesh builder;
+- the light baker (GX attenuation, grid DDA shadows, bounce and AO);
+- portals;
+- the first-person controller;
+- navigation;
+- guard AI.
+
+**Wii backend.**
+- Display-list-free indexed s16 meshes with separate colour arrays.
+- A 5-stage TEV chain:
+  - two projected cookies (player torch, nearest guard torch);
+  - baked or dynamic vertex lighting;
+  - albedo.
+- Rigid skinning through the matrix palette.
+- Thermal mode.
+- Fog.
+- Triple XFB with draw-done pipelining.
+
+**Desktop backend.** SDL2 and GL 3.3, with shaders that mirror the TEV chain
+and quantise to 8 bits like GX.
+- `--script` runs scripted input with screenshots.
+- `--start` spawns the player anywhere.
+
+**Content pipeline.**
+- `tools/make_art.py` generates:
+  - 62 props;
+  - the guard and dog rigs with their clips (15 for the guard, 6 for the
+    dog);
+  - procedural textures.
+- `tools/fetch_polyhaven.py` pulls 31 CC0 surface textures.
+- `tools/nhconv.py` converts everything to GX formats (vectorised CMPR
+  encoder). The data comes to about 1.5 MB.
+
+**Test building.**
+- 2 storeys plus a roof and 14 rooms.
+- Locked doors, windows, a vent run, a roof hatch.
+- Lights on circuits, moonlight, street lights.
+- Hiding spots.
+- 6 guards:
+  - a patrol guard, a veteran upstairs, a lazy napper;
+  - a supervisor;
+  - a dog handler and dog outside.
+
+## Verified
 
 | Check | Result |
 |---|---|
-| `make test` | 9/9 suites pass; ASan/UBSan clean |
-| Desktop (Xvfb + Mesa llvmpipe) | Renders; 400-frame autotest clean under sanitizers |
-| Wii build | Clean with `-Wall -Wextra`; `boot.dol` 520 KB |
-| Dolphin 2609a: boot ELF and packaged `apps/NightHeist/boot.dol` from virtual SD | Boots, 59.9 fps, SD read OK, HOME exits |
-| Dolphin: IR pointer, Wii Remote buttons, 16:9 path | Working |
-| Dolphin vs desktop image | Visually matching lighting and textures |
-| Dolphin: Nunchuk | **Not detected** (see known issues) |
+| `make test` | 17 suites, 29,296 checks, 0 failures; clean under ASan and UBSan |
+| Pathfinding | 300 random walkable pairs across both floors all path; stairs, doors, the dog without doors, and the cache are covered |
+| Detection maths | Cone, peripheral, occlusion by walls and floors, darkness range, crouch ×0.6, motion, thermal, hiding and vents, archetype ordering |
+| AI scenarios | Standing lit in front of a patrol gets you caught in under 12 s; crouching still in a dark corner for 40 s is never spotted; footsteps through a wall barely register; distractions, takedown rules, body → search plus radio, alarm threshold, supervisor missed check-in |
+| Determinism | Two 30 s runs of the full roster end bit-identical |
+| Desktop | Guards patrol, open and close doors, carry torches in the dark, spot, radio, chase, catch and reset; screenshots in the PR |
+| Wii (Dolphin 2609a) | Same scene at 59.9 fps, about 19.5k tris and 59 draws in the corridor view; the guard is in the same place as on desktop at the same moment |
 
-### Numbers so far (Dolphin, not representative of hardware)
+## Numbers (Dolphin, not representative of hardware)
 
-| Scene | Triangles | Draw calls |
-|---|---|---|
-| 1 torus (default) | 9,850 | 7 |
-| 49 tori (stress max) | 120,426 | 55 |
+| Scene | Triangles | Draws | Notes |
+|---|---|---|---|
+| Street view (Phase 2) | 17.5k | 32 | |
+| Ground-floor corridor with 2 guards visible | 19.6k | 59 | |
+| Level build plus bake | | | 1.87 s emulated |
 
-Memory in Dolphin: heap 2.0 MB used, MEM1 16.7 MB free, MEM2 53.8 MB free.
-Dolphin's CPU and GPU-wait timings are meaningless (the GPU runs on its own
-thread), so the real CPU ms, GPU-wait ms and fps for each stress step must
-come from hardware.
+- Arenas in use: persistent 2.3/4 MB, level 2.5/12 MB (the nav grid takes
+  about 1 MB of that), scratch 6.6/10 MB.
+- Dolphin reports CPU and GPU times that don't mean anything; real numbers
+  have to come from hardware.
 
-### Known issues / open items
+## Known issues / open items
 
-1. **Nunchuk not detected in my headless Dolphin setup.** Dolphin attaches
-   the extension (its log says "Switching to Extension 1") but libogc's
-   `exp.type` stays 0. The same happens with a Classic Controller and with
-   MotionPlus detached, so it is the libogc ↔ Dolphin extension handshake
-   in that environment, not the Nunchuk code. The HUD now shows the raw
-   expansion id. **Needs checking** in a desktop Dolphin (Wii Remote 1 →
-   Emulated → Extension: Nunchuk; also try unticking *Attach MotionPlus*)
-   and on real hardware.
-2. The CPU waits on `GX_DrawDone` every frame (CPU and GPU serialised).
-   That's fine for Phase 0. Phase 2 will pipeline with draw-done tokens or a
-   third framebuffer.
-3. Vertex data is still float32 (12 B per position or normal). The Phase 1
-   asset converter quantises to s16 and adds triangle strips.
-4. Real-hardware unknowns: 480p detection on component cables, the 16:9
-   VI width trick on your TV, rumble feel, ASND click latency, libfat SD
-   init time.
+1. **Nunchuk in headless Dolphin**: still not detected in this CI-style
+   setup (libogc never sees the extension). It needs checking in a desktop
+   Dolphin or on hardware. The keyboard and pointer paths work.
+2. Bodies can't be dragged yet. Hiding in lockers, wardrobes and under desks
+   is supported by the AI (`hiding_prop`) but has no player interaction yet;
+   both come in Phase 5.
+3. Guard voices are subtitles only; audio arrives in Phase 9.
+4. Real-hardware unknowns: fill rate with two projected cookies in large
+   rooms, libfat init time, rumble feel.
 
-### Next: Phase 1, Foundations (after your go-ahead)
+## Next: Phase 4, procedural generator
 
-- Asset pipeline: glTF 2.0 → quantised binary meshes with strips; PNG →
-  CMPR/I8/IA8/RGB565 with mips; animation tracks.
-- First-person controller with the bounding-box turn scheme and its settings.
-- Capsule collision against level geometry.
-- Debug overlay: FPS, triangles, draw calls, memory, seed.
+- An integer-only generator, so the same seed gives the same building on Wii
+  and desktop:
+  - 5 building types in 3 size tiers;
+  - a room graph on the 2 m grid, multiple floors, stairs, vents, roofs;
+  - at least 40 set-piece templates;
+  - furniture dressing;
+  - lights on circuits.
+- Lock-and-key placement validated by search, with regeneration on failure.
+- Guard rosters and patrol routes generated per building.
+- Tests: solvability over 10,000 seeds, layout distinctness, and a
+  top-down seed-map renderer.

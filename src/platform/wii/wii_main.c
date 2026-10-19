@@ -2,6 +2,7 @@
 #include <gccore.h>
 #include <malloc.h>
 #include <ogc/lwp_watchdog.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <wiiuse/wpad.h>
 
@@ -68,10 +69,22 @@ const char *plat_name(void)
     return "Wii";
 }
 
+/* Testing aid: data/../debug_start.txt holding "x,y,z,yaw,pitch" (degrees)
+ * puts the player there, like the desktop --start option. */
 bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
 {
-    (void)x, (void)y, (void)z, (void)yaw, (void)pitch;
-    return false;
+    char path[160], buf[96];
+    snprintf(path, sizeof(path), "%s/debug_start.txt", plat_data_dir());
+    long n = plat_file_read(path, buf, sizeof(buf) - 1);
+    if (n <= 0)
+        return false;
+    buf[n] = 0;
+    float yd = 0, pd = 0;
+    if (sscanf(buf, "%f,%f,%f,%f,%f", x, y, z, &yd, &pd) < 4)
+        return false;
+    *yaw = yd * 3.14159265f / 180.0f;
+    *pitch = pd * 3.14159265f / 180.0f;
+    return true;
 }
 
 uint64_t plat_time_us(void)

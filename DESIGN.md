@@ -188,7 +188,7 @@ stops turning. This is already implemented in the Phase 0 sim.
 |---|---|
 | Projected-texture torch | Feasible: texgen from position plus TEV is standard GX practice. Fill rate is the risk; measure in Phase 2. |
 | Baked vertex lighting at load | Feasible if raycasts use the grid rather than triangles (see 4.4). |
-| Skeletal guards (~30 bones) | GX has 10 position matrices per draw; meshes get split by bone palette, or CPU skinning is used. Both will be measured in Phase 3. |
+| Skeletal guards | Done in Phase 3 with rigid skinning: 11-bone guard, 7-bone dog, each model part draws with at most 10 bones through the GX `PTNMTXIDX` matrix palette, so no CPU skinning. Six guards plus the level hold 59.9 fps in Dolphin. |
 | Thermal goggles (elite guards, player gadget) | Feasible: render a heat pass with TEV colour remapping, no shaders needed. |
 | 3D audio with wall attenuation | ASND gives per-voice volume and pan; occlusion is computed on the CPU from the room graph. |
 | Wii Remote speaker | Stretch goal only. |
@@ -199,6 +199,110 @@ stops turning. This is already implemented in the Phase 0 sim.
   MEM1/MEM2 free, input state, SD status.
 - Desktop `--autotest --frames N --screenshot` runs give reproducible smoke
   tests.
-- Coming next: the full debug overlay (Phase 1), AI debug views (Phase 3),
-  a top-down seed map renderer (Phase 4), and opt-in playtest logging to SD
-  (Phase 8).
+- Debug overlay (1): fps, CPU/GPU ms, triangles, draws, visible rooms,
+  geometry/texture/resource MB, arena use, MEM2 free, seed, build time,
+  position, room, light level, and one line per guard (archetype, state,
+  suspicion, visibility, awareness, floor, torch).
+- AI view (2, press again for thermal): view cones and nav paths drawn on the
+  floor, last-known-position markers, and state labels over every guard.
+- `debug_start.txt` next to `boot.dol` (Wii) or `--start x,y,z,yaw,pitch`
+  (desktop) spawns the player anywhere.
+- Coming next: a top-down seed map renderer (Phase 4) and opt-in playtest
+  logging to SD (Phase 8).
+
+## 9. Guards (Phase 3)
+
+The simulation is pure C in `src/core/nh_ai.c` and `nh_nav.c`. It has no
+platform calls and is deterministic: the same seed and the same inputs give
+the same guard positions on Wii and desktop (unit-tested).
+
+**Navigation.** A 1 m grid (2×2 nodes per cell) per floor is built from the
+level. Walls, windows and rails block movement; furniture lower than 1.5 m
+blocks the nodes it covers. Doors are passable (guards open them) at a small
+cost, and locked doors at a large one. Stair ramps link to the floor above.
+Paths come from A* with a binary heap, then string-pulling, and keep a
+waypoint either side of each doorway so guards walk through door centres. An
+LRU cache holds 24 recent paths. Dogs path with doors closed.
+
+**Perception.** Each guard thinks every other tick (staggered).
+- *Sight.* Range is `view_range × (0.22 + 0.78 × light)`, with 12 m minimum
+  for thermal goggles. The field of view is plus 35° of peripheral vision
+  within 5 m. Three raycasts (head, chest, feet) give the fraction of the
+  player that is visible.
+- *Suspicion gain per second.* The visible fraction is multiplied by:
+  - distance falloff `1 − (d/range)²`;
+  - a light term;
+  - stance (crouched 0.6);
+  - motion (still 0.6, walking 1.0, running 1.6);
+  - archetype gain;
+  - awareness;
+  - difficulty;
+  - ×2.5 within 2.5 m.
+- *Light on the player* is the baked light meter plus their own torch, plus
+  any guard torch whose beam falls on them, so walking into a beam is
+  dangerous.
+- *The player's torch beam* hitting a surface in a guard's view raises
+  suspicion even when the player is out of sight.
+- *Hearing.* Noise radius × hearing × 0.45 for each blocker (wall, closed
+  door, closed window, or two per floor). Sound gives only an approximate
+  direction.
+- *Changes noticed.* Doors left open, missing loot, bodies, dead cameras,
+  lights off, broken glass and open vents are added by the game as
+  anomalies. Each guard reacts to each anomaly once.
+
+**States.** The thresholds are 0.3 SUSPICIOUS (stop and turn), 0.65
+INVESTIGATE (walk over) and 1.0 ALERT (chase, radio after 1.5 s).
+- *Losing the player* turns ALERT into SEARCH. Search points are:
+  - the last known position;
+  - hiding spots within 2.2 m of it (and within 9 m for archetypes that check
+    hiding places);
+  - random points in that room and the rooms one or two doors away, visited
+    nearest-first.
+- *After the search time* the guard returns to the route. Awareness rises
+  with each alert and makes the guard faster to notice next time.
+- *Radio calls* send the two nearest guards running and the rest walking.
+  Elite and police guards flank 4 m to either side.
+- *The building alarm* trips after `alarm_threshold` alerts.
+- *Caught* is ALERT, in sight, within 1.3 m.
+
+**Archetypes** (`nh_ai_arch`):
+- *Rookie:* distractible, slow to suspect.
+- *Guard:* the standard.
+- *Veteran:* checks hiding spots, searches for longer.
+- *Lazy:* skips patrol points, naps, carries no torch.
+- *Handler and dog:* the dog follows the handler, smells you within 6 m (3 m
+  under a door), barks, and brings the handler over. It can't open doors.
+- *Camera operator:* stays at the console.
+- *Supervisor:* radio check-ins. A knocked-out guard who misses one triggers
+  a search and counts as an alert.
+- *Elite:* thermal vision, flanking.
+- *Janitor (civilian):* flees to the nearest guard to report you.
+- *Police:* arrive after the alarm (Phase 6).
+
+**Player interactions so far.**
+- *Takedown (A)* from behind or on an unaware or sleeping guard. It is noisy
+  (4.5 m) and leaves a body anomaly.
+- *Opening a door* adds a door anomaly; a guard who investigates closes the
+  door again.
+- *Distractions:* `ai_distraction` sends guards to a spot to look around,
+  with little suspicion.
+- *Scripted events:* `ai_send_guard` moves one guard somewhere.
+
+**Presentation** (`src/game/guards.c`).
+- *Animation.* Clips are chosen from the AI state, cross-faded over 0.25 s,
+  with locomotion playback scaled to the actual speed. A head turn is layered
+  on top for looking around.
+- *Torches.* The nearest lit guard torch gets the second projected cookie
+  (TEV `ALPHA1` path); up to four more become per-vertex spot lights, and
+  every lens gets a camera-facing glow.
+- *Lighting.* Characters use `GFX_MAT_VCOLOR`: vertex colour as albedo, lit
+  by ambient plus dynamic lights. On GX this is only the channel's material
+  source set to the vertex.
+- *HUD.*
+  - A pip on a ring around the cursor for every guard who is getting
+    suspicious, pointing their way and filling with suspicion.
+  - "?" or "!" over guards in view.
+  - Bark subtitles within 16 m.
+  - "ALARM" and "CAUGHT" screens.
+  - A heartbeat rumble that speeds up from 0.45 suspicion upwards.
+

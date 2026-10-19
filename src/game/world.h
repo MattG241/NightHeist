@@ -26,6 +26,9 @@ typedef struct WorldView {
     float fovy, aspect, znear, zfar;
     bool in_vent;
     int vent_floor;
+    /* Extra opaque geometry (characters) drawn before the blended pass. */
+    void (*draw_opaque)(void *ctx);
+    void *ctx;
 } WorldView;
 
 typedef struct World {

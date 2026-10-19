@@ -188,6 +188,8 @@ void testlevel_build(Level *L)
     P(L, PROP_CRATE, 0, 13.0f, 24.3f, 0.3f, 0);
     P(L, PROP_CRATE_STACK, 0, 15.6f, 23.6f, 0, 0);
     P(L, PROP_BARREL, 0, 12.7f, 21.5f, 0, 0);
+    P(L, PROP_LOCKER, 0, 17.5f, 24.0f, -NH_PI * 0.5f, 0);
+    P(L, PROP_LOCKER, 0, 17.5f, 24.6f, -NH_PI * 0.5f, 0);
     P(L, PROP_FUSE_BOX, 0, 12.2f, 17.5f, -NH_PI * 0.5f, 0);
     L->props[L->nprops - 1].y = 1.2f;
     P(L, PROP_VENT_GRATE, 0, 15.0f, 19.0f, 0, 0);
@@ -201,6 +203,7 @@ void testlevel_build(Level *L)
     P(L, PROP_BOOKSHELF, 1, 6.4f, 9.0f, -NH_PI * 0.5f, 0);
     P(L, PROP_BOOKSHELF, 1, 6.4f, 11.0f, -NH_PI * 0.5f, 0);
     P(L, PROP_SAFE, 1, 17.4f, 14.5f, NH_PI * 0.5f, 0);
+    P(L, PROP_WARDROBE, 1, 17.6f, 8.2f, NH_PI * 0.5f, 0);
     P(L, PROP_ARMCHAIR, 1, 14.0f, 8.0f, 0.6f, 0);
     P(L, PROP_CONFERENCE_TABLE, 1, 28.0f, 10.0f, 0, 0);
     for (int i = 0; i < 4; i++) {
@@ -225,4 +228,48 @@ NhVec3 testlevel_start(float *yaw)
 {
     *yaw = NH_PI; /* facing +Z, toward the front door */
     return nh_v3(11.0f, 0.0f, 2.0f);
+}
+
+/* Guards for the test building: a ground-floor patrol, a veteran upstairs, a
+ * lazy guard who naps in office A, a supervisor in the executive office and a
+ * dog handler walking the grounds. */
+void testlevel_guards(AiWorld *ai)
+{
+    const float up = LV_STOREY;
+    AiPatrolPt g1[] = {
+        { { 12.0f, 0, 10.0f }, NH_PI * 0.5f, ACT_LOOK, 4.0f },
+        { { 20.0f, 0, 8.0f }, 0.0f, ACT_NONE, 0.5f },
+        { { 20.0f, 0, 22.5f }, NH_PI, ACT_RADIO, 3.0f },
+        { { 28.0f, 0, 18.5f }, NH_PI * 0.5f, ACT_LOOK, 3.0f },
+        { { 20.0f, 0, 14.0f }, 0.0f, ACT_NONE, 0.5f },
+    };
+    ai_add_guard(ai, ARCH_GUARD, nh_v3(14.0f, 0, 12.0f), 0.0f, g1, NH_ARRAY_LEN(g1));
+    AiPatrolPt g2[] = {
+        { { 16.0f, up, 20.0f }, NH_PI, ACT_LOOK, 3.0f },
+        { { 20.0f, up, 12.0f }, 0.0f, ACT_NONE, 0.5f },
+        { { 26.0f, up, 13.0f }, -NH_PI * 0.5f, ACT_LOOK, 4.0f },
+        { { 20.0f, up, 9.0f }, 0.0f, ACT_NONE, 0.5f },
+        { { 27.0f, up, 21.0f }, NH_PI * 0.5f, ACT_LOOK, 3.0f },
+        { { 19.0f, up, 21.0f }, NH_PI * 0.5f, ACT_NONE, 0.5f },
+    };
+    ai_add_guard(ai, ARCH_VETERAN, nh_v3(16.0f, up, 20.0f), NH_PI, g2, NH_ARRAY_LEN(g2));
+    AiPatrolPt g3[] = {
+        { { 25.0f, 0, 12.6f }, 0.0f, ACT_NAP, 25.0f },
+        { { 20.5f, 0, 10.0f }, -NH_PI * 0.5f, ACT_SMOKE, 8.0f },
+    };
+    ai_add_guard(ai, ARCH_LAZY, nh_v3(25.0f, 0, 12.6f), 0.0f, g3, NH_ARRAY_LEN(g3));
+    ai_add_guard(ai, ARCH_SUPERVISOR, nh_v3(12.0f, up, 12.5f), NH_PI * 0.75f, NULL, 0);
+    AiPatrolPt h[] = {
+        { { 37.0f, 0, 29.0f }, 0.0f, ACT_NONE, 0.5f },
+        { { 37.0f, 0, 3.5f }, NH_PI * 0.5f, ACT_LOOK, 3.0f },
+        { { 3.0f, 0, 3.5f }, 0.0f, ACT_NONE, 0.5f },
+        { { 3.0f, 0, 29.0f }, -NH_PI * 0.5f, ACT_SMOKE, 6.0f },
+    };
+    int hi = ai_add_guard(ai, ARCH_HANDLER, nh_v3(20.0f, 0, 29.0f), NH_PI * 0.5f, h, NH_ARRAY_LEN(h));
+    int di = ai_add_guard(ai, ARCH_DOG, nh_v3(21.0f, 0, 29.5f), NH_PI * 0.5f, NULL, 0);
+    if (hi >= 0 && di >= 0) {
+        ai->g[di].partner = (int8_t)hi;
+        ai->g[di].state = AS_PATROL;
+        ai->g[hi].partner = (int8_t)di;
+    }
 }

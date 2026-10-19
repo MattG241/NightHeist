@@ -489,6 +489,7 @@ static void setup_material(const WiiMesh *wm, const GfxMaterial *mat, const NhMa
 {
     bool lit = !(mat->flags & GFX_MAT_UNLIT);
     bool baked = (mat->flags & GFX_MAT_BAKED) && wm->col;
+    bool vcol = !baked && (mat->flags & GFX_MAT_VCOLOR) && wm->col;
     bool torch = lit && s_projA.enabled && !(mat->flags & GFX_MAT_NOTORCH);
     bool guard = lit && s_projB.enabled && !(mat->flags & GFX_MAT_NOTORCH);
     bool cookies = !wm->skinned;
@@ -522,13 +523,13 @@ static void setup_material(const WiiMesh *wm, const GfxMaterial *mat, const NhMa
     }
 
     GX_SetNumChans(2);
-    GX_SetChanCtrl(GX_COLOR0, GX_ENABLE, baked ? GX_SRC_VTX : GX_SRC_REG, GX_SRC_REG, s_light_mask, GX_DF_CLAMP,
-                   GX_AF_SPOT);
+    GX_SetChanCtrl(GX_COLOR0, GX_ENABLE, baked ? GX_SRC_VTX : GX_SRC_REG, vcol ? GX_SRC_VTX : GX_SRC_REG,
+                   s_light_mask, GX_DF_CLAMP, GX_AF_SPOT);
     GX_SetChanCtrl(GX_ALPHA0, GX_DISABLE, GX_SRC_REG, GX_SRC_REG, 0, GX_DF_NONE, GX_AF_NONE);
     GX_SetChanAmbColor(GX_COLOR0A0, amb);
     GX_SetChanMatColor(GX_COLOR0A0, tint);
-    GX_SetChanCtrl(GX_COLOR1, torch ? GX_ENABLE : GX_DISABLE, GX_SRC_REG, GX_SRC_REG, torch ? GX_LIGHT6 : 0,
-                   GX_DF_CLAMP, GX_AF_SPOT);
+    GX_SetChanCtrl(GX_COLOR1, torch ? GX_ENABLE : GX_DISABLE, GX_SRC_REG, vcol ? GX_SRC_VTX : GX_SRC_REG,
+                   torch ? GX_LIGHT6 : 0, GX_DF_CLAMP, GX_AF_SPOT);
     GX_SetChanCtrl(GX_ALPHA1, guard ? GX_ENABLE : GX_DISABLE, GX_SRC_REG, GX_SRC_REG, guard ? GX_LIGHT7 : 0,
                    GX_DF_CLAMP, GX_AF_SPOT);
     GX_SetChanAmbColor(GX_COLOR1A1, zero);

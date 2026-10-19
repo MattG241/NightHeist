@@ -20,7 +20,10 @@ int nh_test_checks;
     X(test_portals)            \
     X(test_bake)               \
     X(test_player)             \
-    X(test_assets)
+    X(test_assets)             \
+    X(test_nav)                \
+    X(test_detection)          \
+    X(test_ai)
 
 #define X(name) void name(void);
 TESTS(X)

@@ -246,6 +246,7 @@ static void draw_model(const World *w, const ResModel *rm, const NhMat34 *m, NhC
         GfxMaterial mat = *res_mat(rm->part_mat[k]);
         if (!(mat.flags & GFX_MAT_UNLIT)) {
             mat.flags &= (uint16_t)~GFX_MAT_BAKED;
+            mat.flags |= GFX_MAT_VCOLOR;
             mat.ambient = ambient;
         }
         gfx_draw(rm->parts[k], &mat, m);
@@ -393,6 +394,8 @@ void world_draw(World *w, const WorldView *v)
                 draw_model(w, rm, &m, w->prop_ambient[i]);
             }
             draw_doors(w);
+            if (v->draw_opaque)
+                v->draw_opaque(v->ctx);
         }
     }
     draw_glass_and_glows(w, v);

@@ -114,7 +114,7 @@ static const char *k_vs3d =
     "uniform vec3 u_lpos[8], u_ldir[8], u_lcol[8], u_la[8], u_lk[8];\n" /* 0-5 dyn, 6 torch, 7 guard */
     "uniform int u_torch, u_guard;\n"
     "uniform vec4 u_amb, u_tint;\n"
-    "uniform int u_baked, u_unlit;\n"
+    "uniform int u_baked, u_unlit, u_vcol;\n"
     "out vec4 v_c0;\n"
     "out vec4 v_c1;\n"
     "out vec2 v_uv;\n"
@@ -142,8 +142,9 @@ static const char *k_vs3d =
     "  } else {\n"
     "    vec3 sum = u_baked != 0 ? a_col.rgb : u_amb.rgb;\n"
     "    for (int i = 0; i < u_nlights; i++) sum += u_lcol[i] * lightf(i, P, N);\n"
-    "    v_c0 = vec4(q8(u_tint.rgb * clamp(sum, 0.0, 1.0)), u_tint.a);\n"
-    "    vec3 t = u_torch != 0 ? q8(u_tint.rgb * clamp(u_lcol[6] * lightf(6, P, N), 0.0, 1.0)) : vec3(0.0);\n"
+    "    vec3 mc = u_vcol != 0 ? a_col.rgb : u_tint.rgb;\n"
+    "    v_c0 = vec4(q8(mc * clamp(sum, 0.0, 1.0)), u_tint.a);\n"
+    "    vec3 t = u_torch != 0 ? q8(mc * clamp(u_lcol[6] * lightf(6, P, N), 0.0, 1.0)) : vec3(0.0);\n"
     "    float g = u_guard != 0 ? clamp(lightf(7, P, N), 0.0, 1.0) : 0.0;\n"
     "    v_c1 = vec4(t, floor(g * 255.0 + 0.5) / 255.0);\n"
     "  }\n"
@@ -253,7 +254,7 @@ typedef struct Quad {
 
 typedef struct Prog3D {
     GLuint id;
-    GLint proj, mv, nm, skinned, tgA, tgB, nlights, lpos, ldir, lcol, la, lk, torch, guard, amb, tint, baked,
+    GLint proj, mv, nm, skinned, tgA, tgB, nlights, lpos, ldir, lcol, la, lk, torch, guard, amb, tint, baked, vcol,
         unlit, tex, cookie, cookieA, cookieB, alphatest, thermal, warm, fogon, gcol, fogcol, fog;
 } Prog3D;
 
@@ -365,6 +366,7 @@ bool desktop_gfx_init(void)
     P.amb = U("u_amb");
     P.tint = U("u_tint");
     P.baked = U("u_baked");
+    P.vcol = U("u_vcol");
     P.unlit = U("u_unlit");
     P.tex = U("u_tex");
     P.cookie = U("u_cookie");
@@ -689,7 +691,7 @@ static void projector_texgen(const GfxProjector *pr, const NhMat34 *model, float
     m34_to_44(&t, out);
 }
 
-static void setup_draw(const GfxMaterial *mat, bool skinned, const NhMat34 *model)
+static void setup_draw(const GfxMaterial *mat, bool skinned, bool has_colors, const NhMat34 *model)
 {
     p_glUseProgram(P.id);
     p_glUniformMatrix4fv(P.proj, 1, GL_TRUE, s_proj);
@@ -734,6 +736,7 @@ static void setup_draw(const GfxMaterial *mat, bool skinned, const NhMat34 *mode
     p_glUniform4f(P.amb, mat->ambient.r / 255.0f, mat->ambient.g / 255.0f, mat->ambient.b / 255.0f, 1.0f);
     p_glUniform4f(P.tint, mat->tint.r / 255.0f, mat->tint.g / 255.0f, mat->tint.b / 255.0f, mat->tint.a / 255.0f);
     p_glUniform1i(P.baked, (mat->flags & GFX_MAT_BAKED) != 0);
+    p_glUniform1i(P.vcol, has_colors && !(mat->flags & GFX_MAT_BAKED) && (mat->flags & GFX_MAT_VCOLOR));
     p_glUniform1i(P.unlit, !lit);
     p_glUniform1i(P.alphatest, (mat->flags & GFX_MAT_ALPHATEST) != 0);
     p_glUniform1i(P.thermal, s_mode == GFX_MODE_THERMAL);
@@ -800,7 +803,7 @@ void gfx_draw(GfxMesh mesh, const GfxMaterial *mat, const NhMat34 *model)
 {
     if (!mesh || mesh >= GFX_MAX_MESHES || !s_meshes[mesh].used)
         return;
-    setup_draw(mat, false, model);
+    setup_draw(mat, false, s_meshes[mesh].has_colors, model);
     p_glUniform1i(P.skinned, 0);
     upload_bones(model, 1);
     draw_mesh(&s_meshes[mesh]);
@@ -811,7 +814,7 @@ void gfx_draw_skinned(GfxMesh mesh, const GfxMaterial *mat, const NhMat34 *bones
     if (!mesh || mesh >= GFX_MAX_MESHES || !s_meshes[mesh].used || nbones < 1)
         return;
     nbones = NH_MIN(nbones, NH_MAX_BONES);
-    setup_draw(mat, true, &bones[0]);
+    setup_draw(mat, true, s_meshes[mesh].has_colors, &bones[0]);
     p_glUniform1i(P.skinned, 1);
     upload_bones(bones, nbones);
     draw_mesh(&s_meshes[mesh]);
