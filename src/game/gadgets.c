@@ -9,8 +9,8 @@
 #include "core/nh_proptab.h"
 #include "res.h"
 
-static NhVec3 eye_pos(const Heist *h) { return nh_player_eye(&h->player, &h->world.L, 1.0f); }
-static NhVec3 aim(const Heist *h) { return nh_player_aim_dir(&h->player, gfx_display_aspect(), HEIST_FOVY); }
+static NhVec3 eye_pos(const Heist *h) { return nh_player_eye(&h->me->player, &h->world.L, 1.0f); }
+static NhVec3 aim(const Heist *h) { return nh_player_aim_dir(&h->me->player, h->me->aspect, HEIST_FOVY); }
 
 /* Guard best lined up with the aim within range (line of sight required). */
 static int aimed_guard(const Heist *h, float range, float min_cos, bool any_state)
@@ -81,7 +81,7 @@ static int aimed_entity(const Heist *h, int kind, float range, float min_cos)
 
 static bool cut_window(Heist *h)
 {
-    NhPlayer *p = &h->player;
+    NhPlayer *p = &h->me->player;
     Level *L = &h->world.L;
     NhVec3 dir = aim(h);
     int cx = lv_cell_of(p->pos.x), cz = lv_cell_of(p->pos.z);
@@ -159,33 +159,11 @@ static void land(Heist *h, Projectile *pr)
     }
 }
 
-bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
+/* Projectiles and the drill: shared by everyone, once per tick. */
+void gadgets_world_tick(Heist *h)
 {
     const float dt = NH_TICK_DT;
     NhJob *j = &h->state;
-    /* Cycle with the D-pad (skipping empty gadgets). */
-    int dir = (in->pressed & NH_BTN_RIGHT) ? 1 : (in->pressed & NH_BTN_LEFT) ? -1 : 0;
-    if (dir) {
-        for (int k = 1; k <= GD_COUNT; k++) {
-            int g = (j->gadget + dir * k + GD_COUNT * 2) % GD_COUNT;
-            if (j->charges[g] > 0) {
-                if (g != j->gadget)
-                    audio_play(SFX_UI_MOVE, 0.3f, 0.0f, 1.0f);
-                j->gadget = g;
-                break;
-            }
-        }
-    }
-    /* D-pad up toggles the thermal goggles directly. */
-    if ((in->pressed & NH_BTN_UP) && h->thermal_battery > 0.0f)
-        h->thermal = !h->thermal;
-    if (h->thermal) {
-        h->thermal_battery -= dt / (90.0f * h->perks.thermal_life);
-        if (h->thermal_battery <= 0.0f) {
-            h->thermal_battery = 0.0f;
-            h->thermal = false;
-        }
-    }
     /* Projectiles in flight and landed effects. */
     for (int i = 0; i < (int)NH_ARRAY_LEN(h->proj); i++) {
         Projectile *pr = &h->proj[i];
@@ -231,12 +209,41 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
             heist_status(h, "The drill's through: safe open");
         }
     }
+}
+
+bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
+{
+    const float dt = NH_TICK_DT;
+    NhJob *j = &h->state;
+    /* Cycle with the D-pad (skipping empty gadgets). */
+    int dir = (in->pressed & NH_BTN_RIGHT) ? 1 : (in->pressed & NH_BTN_LEFT) ? -1 : 0;
+    if (dir) {
+        for (int k = 1; k <= GD_COUNT; k++) {
+            int g = (h->me->gadget + dir * k + GD_COUNT * 2) % GD_COUNT;
+            if (j->charges[g] > 0) {
+                if (g != h->me->gadget)
+                    audio_play(SFX_UI_MOVE, 0.3f, 0.0f, 1.0f);
+                h->me->gadget = g;
+                break;
+            }
+        }
+    }
+    /* D-pad up toggles the thermal goggles directly. */
+    if ((in->pressed & NH_BTN_UP) && h->me->thermal_battery > 0.0f)
+        h->me->thermal = !h->me->thermal;
+    if (h->me->thermal) {
+        h->me->thermal_battery -= dt / (90.0f * h->perks.thermal_life);
+        if (h->me->thermal_battery <= 0.0f) {
+            h->me->thermal_battery = 0.0f;
+            h->me->thermal = false;
+        }
+    }
     if (!a_free || !(in->pressed & NH_BTN_A))
         return false;
-    int g = j->gadget;
+    int g = h->me->gadget;
     if (j->charges[g] == 0 || g == GD_LOCKPICK)
         return false;
-    if (j->carrying >= 0 || j->holding >= 0) {
+    if (h->me->carrying >= 0 || h->me->holding >= 0) {
         heist_status(h, "Hands full");
         return true;
     }
@@ -284,9 +291,9 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         float d;
         for (int i = 0; i < h->ai.n && !used; i++) {
             const AiGuard *gd = &h->ai.g[i];
-            if (!gd->active || gd->arch == ARCH_DOG || nh_gadgets[GD_CLONER].range < nh_v3_dist(gd->pos, h->player.pos))
+            if (!gd->active || gd->arch == ARCH_DOG || nh_gadgets[GD_CLONER].range < nh_v3_dist(gd->pos, h->me->player.pos))
                 continue;
-            if (!ai_can_takedown(&h->ai, i, h->player.pos, &d))
+            if (!ai_can_takedown(&h->ai, i, h->me->player.pos, &d))
                 continue;
             int levels = gd->arch == ARCH_ELITE || gd->arch == ARCH_SUPERVISOR ? 3 : gd->arch == ARCH_VETERAN ? 2 : 1;
             for (int k = 1; k <= levels; k++)
@@ -300,8 +307,8 @@ bool gadgets_update(Heist *h, const NhInput *in, bool a_free)
         break;
     }
     case GD_THERMAL:
-        if (h->thermal_battery > 0.0f)
-            h->thermal = !h->thermal;
+        if (h->me->thermal_battery > 0.0f)
+            h->me->thermal = !h->me->thermal;
         return true;
     case GD_MIRROR: {
         NhVec3 eye = eye_pos(h), dir = aim(h);
@@ -396,7 +403,7 @@ void gadgets_render(Heist *h, const NhMat34 *view)
         }
     }
     /* Laser beams: thin camera-facing ribbons. */
-    NhVec3 eye = nh_player_eye(&h->player, &h->world.L, h->alpha);
+    NhVec3 eye = nh_player_eye(&h->me->player, &h->world.L, h->alpha);
     for (int i = 0; i < h->sec.nlas; i++) {
         if (!sec_laser_live(&h->sec, &h->world.L, i))
             continue;

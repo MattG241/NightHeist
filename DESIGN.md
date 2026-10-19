@@ -756,3 +756,90 @@ security 3.**
 | Audio bank | 5 MB, from the heap |
 
 About 31 MB of MEM2 is still free.
+
+## 14. Local co-op
+
+Two players, split screen, in the same campaign and on the same jobs.
+
+**Starting a co-op job.**
+- On the plan screen the D-pad picks 1 or 2 players. The option is offered
+  only while Wii Remote 2 is connected with a Nunchuk.
+- `heist_start(..., players, ...)` builds one job for both. Player 2 starts
+  0.9 m to the right of player 1.
+
+**Input.**
+- `plat_input_poll(player, ...)` reads WPAD channel 0 and 1 on the Wii.
+  The scan runs once per frame, on player 0's poll.
+- On desktop, player 2 is a gamepad, or `p2` lines in a script.
+- Rumble is per remote.
+
+**State.**
+- Everything that belongs to one player lives in `HeistPlayer`: the body,
+  torch, battery, light level, status line, action and hold, minigame,
+  hiding spot, selected gadget, hands (heavy loot or a body), thermal,
+  map view, AI view, and cuffed state.
+- `h->me` points at the player being updated or drawn, so the
+  interaction, gadget and HUD code is unchanged.
+- The world, guards, security, job, gadget charges, keycards, codes and
+  the bag (cap ×1.5) are shared.
+
+**Tick order.**
+1. Each player's input in turn: their map, moving, the torch,
+   interactions, gadget use and takedowns.
+2. The world, once: projectiles and the drill.
+3. Both AI views.
+4. `ai_tick_views`, then the events, each routed to the player it
+   concerns.
+5. Security, the job clock, and doors and lights.
+6. Each player's after-step: being caught or cuffed, heartbeat, rumble,
+   torch battery and aim, and light level.
+7. Audio.
+
+With one player and their map open, the whole game pauses, as before. In
+co-op the world carries on and that player stands still.
+
+**Guards (`nh_ai`).** `ai_tick_views(w, views, n)`:
+- Each guard keeps a `target`. On its perception ticks it switches to the
+  player it sees best. While alert or searching with nobody in sight, it
+  keeps its quarry. Otherwise it watches the nearest player who isn't
+  cuffed.
+- Torch beams and noises from every player are checked by every guard.
+- Hiding-spot checks look at both players.
+- `EV_CAUGHT` and `EV_FOUND_HIDING` carry the player index.
+- `caught_mask` stops a player being caught twice.
+- `ai_release_caught` clears a player's catch when their partner frees
+  them.
+- With one view, every result is identical to `ai_tick`, and a test
+  checks this.
+
+Cameras and lasers (`sec_tick_views`) take the most detected player per
+camera, and any player who crosses a beam.
+
+**Caught in co-op.**
+- The usual 2.5 s "caught" sequence plays.
+- The player then drops what they were carrying and is **cuffed** in
+  place.
+- Cuffed players are invisible to guards and cameras, and the alarm goes
+  up.
+- The partner frees them with a 2 s hold on C. The van won't leave while a
+  partner is cuffed.
+- If both are cuffed, or a partner stays cuffed for 90 s, the job is
+  busted.
+
+**Rendering.**
+- `gfx_set_viewport` gives each player a 640×240 view (player 1 on top),
+  and the projection uses the view's aspect.
+- Pending world-space quads are flushed at each viewport change, so
+  sprites stay in their own view.
+- `gfx_set_2d_region` maps each player's 640×480 HUD into their half (y
+  scale 0.5). Small text is drawn twice as tall there so it stays
+  readable.
+- The pause and summary screens are drawn once over the whole screen.
+- Each player sees the other as the guard model in dark clothes, animated
+  idle, walk or run, or sitting when cuffed. The partner's torch is one of
+  the per-vertex spot lights.
+- Positioned sounds play as loud as the nearer player hears them, panned
+  less because both players share one TV.
+
+**Performance on Wii** (Dolphin, large bank at security 3, both views
+outside): 59.9 fps, 5.3 ms CPU, 81k triangles in 155 draws.

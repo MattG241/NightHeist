@@ -31,9 +31,16 @@ bool text_init(NhArena *scratch)
     return s_font != 0;
 }
 
+static float s_tall = 1.0f;
+
+void text_set_tall(float k) { s_tall = k; }
+
 void text_draw(float x, float y, float scale, NhColor color, const char *str)
 {
     float start_x = x;
+    /* Small text keeps its height when the HUD is squashed into half the
+     * screen (co-op); larger text stays squat but readable. */
+    float tall = scale <= 1.5f ? s_tall : 1.0f;
     for (const char *c = str; *c; c++) {
         if (*c == '\n') {
             x = start_x;
@@ -43,8 +50,8 @@ void text_draw(float x, float y, float scale, NhColor color, const char *str)
         if (*c != ' ') {
             float u0, v0, u1, v1;
             nh_font_glyph_uv((unsigned char)*c, &u0, &v0, &u1, &v1);
-            gfx_draw_quad2d(s_font, x, y, NH_FONT_GLYPH_W * scale, NH_FONT_GLYPH_H * scale, u0, v0, u1, v1,
-                            color);
+            gfx_draw_quad2d(s_font, x, y - NH_FONT_GLYPH_H * scale * (tall - 1.0f) * 0.5f, NH_FONT_GLYPH_W * scale,
+                            NH_FONT_GLYPH_H * scale * tall, u0, v0, u1, v1, color);
         }
         x += NH_FONT_ADVANCE * scale;
     }

@@ -73,7 +73,8 @@ const char *plat_name(void)
 /* Testing aid: debug_start.txt next to boot.dol. A line "x,y,z,yaw,pitch"
  * (degrees) puts the player there, like the desktop --start option; a line
  * "job TYPE,SIZE,SEED,SECURITY" picks the building (TYPE -1: test level);
- * a line "overlay" starts with the debug overlay on. */
+ * a line "overlay" starts with the debug overlay on; "coop" makes the debug
+ * job two-player split screen. */
 static bool read_debug_file(char *buf, int cap)
 {
     char path[160];
@@ -93,6 +94,12 @@ bool plat_debug_job(int *type, int *size, unsigned *seed, int *security)
     const char *j = strstr(buf, "job ");
     *security = 2;
     return j && sscanf(j + 4, "%d,%d,%u,%d", type, size, seed, security) >= 3;
+}
+
+bool plat_debug_coop(void)
+{
+    char buf[160];
+    return read_debug_file(buf, sizeof(buf)) && strstr(buf, "coop");
 }
 
 bool plat_debug_overlay(void)

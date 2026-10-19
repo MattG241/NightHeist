@@ -349,6 +349,32 @@ static GXTexObj *tex_obj(GfxTexture h)
 
 /* ---- frame --------------------------------------------------------------- */
 
+static int s_vp[4] = { 0, 0, GFX_SCREEN_W, GFX_SCREEN_H };
+static float s_r2d[4] = { 0, 0, 1, 1 };
+
+static void apply_viewport(void)
+{
+    float ky = (float)s_rmode->efbHeight / (float)GFX_SCREEN_H, kx = (float)s_rmode->fbWidth / (float)GFX_SCREEN_W;
+    GX_SetViewport((f32)s_vp[0] * kx, (f32)s_vp[1] * ky, (f32)s_vp[2] * kx, (f32)s_vp[3] * ky, 0, 1);
+    GX_SetScissor((u32)((float)s_vp[0] * kx), (u32)((float)s_vp[1] * ky), (u32)((float)s_vp[2] * kx),
+                  (u32)((float)s_vp[3] * ky));
+}
+
+static void flush_quads(Quad *qs, int n, bool is3d);
+
+void gfx_set_viewport(int x, int y, int w, int h)
+{
+    flush_quads(s_q3d, s_nq3d, true);
+    s_nq3d = 0;
+    s_vp[0] = x, s_vp[1] = y, s_vp[2] = w, s_vp[3] = h;
+    apply_viewport();
+}
+
+void gfx_set_2d_region(float ox, float oy, float sx, float sy)
+{
+    s_r2d[0] = ox, s_r2d[1] = oy, s_r2d[2] = sx, s_r2d[3] = sy;
+}
+
 void gfx_begin_frame(NhColor clear)
 {
     s_cur = (GfxStats){ 0 };
@@ -361,7 +387,9 @@ void gfx_begin_frame(NhColor clear)
     /* The EFB is cleared by the copy at the end of the frame, so this colour
      * applies from the next frame on. */
     GX_SetCopyClear(to_gx(clear), GX_MAX_Z24);
-    GX_SetViewport(0, 0, s_rmode->fbWidth, s_rmode->efbHeight, 0, 1);
+    s_vp[0] = s_vp[1] = 0, s_vp[2] = GFX_SCREEN_W, s_vp[3] = GFX_SCREEN_H;
+    apply_viewport();
+    gfx_set_2d_region(0, 0, 1, 1);
     if (s_colors_dirty) {
         GX_InvVtxCache();
         s_colors_dirty = false;
@@ -370,7 +398,8 @@ void gfx_begin_frame(NhColor clear)
 
 void gfx_set_camera(const NhMat34 *view, float fovy_deg, float znear, float zfar)
 {
-    guPerspective(s_proj, fovy_deg, gfx_display_aspect(), znear, zfar);
+    float aspect = gfx_display_aspect() * ((float)s_vp[2] / GFX_SCREEN_W) / ((float)s_vp[3] / GFX_SCREEN_H);
+    guPerspective(s_proj, fovy_deg, aspect, znear, zfar);
     GX_LoadProjectionMtx(s_proj, GX_PERSPECTIVE);
     memcpy(s_view, view->m, sizeof(Mtx));
     s_znear = znear;
@@ -685,6 +714,7 @@ void gfx_draw_quad2d(GfxTexture tex, float x, float y, float w, float h, float u
     q->tex = tex;
     q->flags = GFX_MAT_BLEND;
     q->c = to_gx(color);
+    x = s_r2d[0] + x * s_r2d[2], y = s_r2d[1] + y * s_r2d[3], w *= s_r2d[2], h *= s_r2d[3];
     float xs[4] = { x, x + w, x + w, x }, ys[4] = { y, y, y + h, y + h };
     float us[4] = { u0, u1, u1, u0 }, vs[4] = { v0, v0, v1, v1 };
     for (int i = 0; i < 4; i++) {
@@ -765,6 +795,8 @@ static void flush_quads(Quad *qs, int n, bool is3d)
 void gfx_end_frame(void)
 {
     flush_quads(s_q3d, s_nq3d, true);
+    s_vp[0] = s_vp[1] = 0, s_vp[2] = GFX_SCREEN_W, s_vp[3] = GFX_SCREEN_H;
+    apply_viewport();
     flush_quads(s_q2d, s_nq2d, false);
     s_nq3d = s_nq2d = 0;
 

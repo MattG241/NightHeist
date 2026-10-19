@@ -338,3 +338,52 @@ void test_ai(void)
     CHECK(moved == patrollers);
     CHECK(max_dev > 5.0f);
 }
+
+/* Co-op: two player views. The guard goes after the one it can see, catches
+ * them, ignores them while cuffed, and the other is still fair game. */
+void test_ai_coop(void)
+{
+    setup();
+    AiGuard *g = lone_guard(ARCH_GUARD);
+    AiPlayerView v[2];
+    v[0] = view_at(nh_v3(6.8f, 0, 11), 1.0f); /* behind the guard */
+    v[1] = view_at(nh_v3(14, 0, 11), 1.0f);  /* in front, lit */
+    for (int t = 0; t < 8; t++)
+        ai_tick_views(&s_ai, v, 2);
+    CHECK(g->target == 1 && g->suspicion > 0.0f);
+    /* Walk up to the guard: caught, and the event says which player. */
+    int caught_view = -1;
+    for (int t = 0; t < 60 * 20 && caught_view < 0; t++) {
+        v[1].pos = nh_v3_lerp(v[1].pos, nh_v3(8.6f, 0, 11), 0.02f);
+        v[1].head = nh_v3(v[1].pos.x, 1.65f, v[1].pos.z);
+        ai_tick_views(&s_ai, v, 2);
+        for (int e = 0; e < s_ai.nev; e++)
+            if (s_ai.ev[e].type == EV_CAUGHT)
+                caught_view = s_ai.ev[e].arg;
+    }
+    CHECK(caught_view == 1 && s_ai.caught_mask == 2u);
+    /* Cuffed: invisible to guards and cameras, and not caught twice. */
+    v[1].cuffed = true;
+    float d;
+    CHECK(ai_visibility(&s_ai, g, &v[1], &d) == 0.0f);
+    int again = 0;
+    for (int t = 0; t < 120; t++) {
+        ai_tick_views(&s_ai, v, 2);
+        for (int e = 0; e < s_ai.nev; e++)
+            again += s_ai.ev[e].type == EV_CAUGHT;
+    }
+    CHECK(again == 0);
+    /* Freed: catchable again. */
+    ai_release_caught(&s_ai, 1);
+    CHECK(s_ai.caught_mask == 0);
+    /* One view behaves exactly like the single-player call. */
+    AiGuard *g1 = lone_guard(ARCH_GUARD);
+    AiPlayerView one = view_at(nh_v3(14, 0, 11), 1.0f);
+    for (int t = 0; t < 30; t++)
+        ai_tick(&s_ai, &one);
+    float s1 = g1->suspicion;
+    AiGuard *g2 = lone_guard(ARCH_GUARD);
+    for (int t = 0; t < 30; t++)
+        ai_tick_views(&s_ai, &one, 1);
+    CHECK(g2->suspicion == s1 && g2->target == 0);
+}

@@ -165,7 +165,8 @@ void title_render(const Title *t, const NhCampaign *c)
         ui_menu_draw(&m, t->sel);
         if (t->has_save && c)
             career(c);
-        ui_centered(456, 1, DIM, "Point and press A, or use the D-pad");
+        ui_centered(450, 1, DIM, "Point and press A, or use the D-pad");
+        ui_centered(462, 1, DIM, "Co-op: connect Wii Remote 2, then pick 2 players when you plan a job");
     }
     if (t->cursor_valid)
         text_draw(t->cursor_x - 7, t->cursor_y - 7, 2, nh_rgba(255, 255, 255, 230), "+");

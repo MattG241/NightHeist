@@ -24,6 +24,7 @@ int nh_test_checks;
     X(test_nav)                \
     X(test_detection)          \
     X(test_ai)                 \
+    X(test_ai_coop)            \
     X(test_gen_determinism)    \
     X(test_gen_distinct)       \
     X(test_gen_nav)            \

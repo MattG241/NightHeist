@@ -16,6 +16,8 @@ static const NhColor HI = { 255, 200, 90, 255 };
 
 static const NhColor RED = { 235, 60, 45, 255 };
 
+static float s_aspect = 4.0f / 3.0f; /* the view being drawn */
+
 /* World point to 640x480 screen coordinates; false if behind the camera. */
 static bool project(const NhMat34 *view, NhVec3 p, float *sx, float *sy)
 {
@@ -23,7 +25,7 @@ static bool project(const NhMat34 *view, NhVec3 p, float *sx, float *sy)
     if (v.z > -0.2f)
         return false;
     float t = tanf(NH_DEG2RAD(HEIST_FOVY * 0.5f));
-    *sx = 320.0f + (v.x / -v.z) / (t * gfx_display_aspect()) * 320.0f;
+    *sx = 320.0f + (v.x / -v.z) / (t * s_aspect) * 320.0f;
     *sy = 240.0f - (v.y / -v.z) / t * 240.0f;
     return true;
 }
@@ -106,7 +108,7 @@ static void centered(float y, float scale, NhColor c, const char *s)
 
 static void draw_lockpick(const Heist *h)
 {
-    const NhLockpick *lp = &h->lp;
+    const NhLockpick *lp = &h->me->lp;
     panel(150, 120, 340, 210);
     centered(130, 2, HI, "LOCKPICK");
     centered(150, 1, DIM, "Twist the remote to feel for each pin. A to set it. B to stop.");
@@ -130,7 +132,7 @@ static void draw_lockpick(const Heist *h)
 
 static void draw_safe(const Heist *h)
 {
-    const NhSafecrack *sc = &h->sc;
+    const NhSafecrack *sc = &h->me->sc;
     panel(170, 100, 300, 260);
     centered(110, 2, HI, "SAFE");
     centered(130, 1, DIM, "Twist to spin the dial. Stop on the clunk, press A.");
@@ -150,15 +152,15 @@ static void draw_safe(const Heist *h)
 
 static void draw_hack(const Heist *h)
 {
-    const NhHack *hk = &h->hk;
+    const NhHack *hk = &h->me->hk;
     panel(160, 90, 320, 290);
     centered(96, 2, HI, "HACK");
     centered(114, 1, DIM, "Match the signal with the pointer. Hold it steady.");
     /* Window 170..470 x 120..360 maps 0..1 (pointer). */
     text_rect(170, 120, 300, 240, nh_rgba(5, 25, 15, 230));
     float tf = hk->freq[hk->cur], ta = hk->amp[hk->cur];
-    float pf = NH_CLAMP((h->player.cursor_x - 170.0f) / 300.0f, 0.0f, 1.0f);
-    float pa = 1.0f - NH_CLAMP((h->player.cursor_y - 120.0f) / 240.0f, 0.0f, 1.0f);
+    float pf = NH_CLAMP((h->me->player.cursor_x - 170.0f) / 300.0f, 0.0f, 1.0f);
+    float pa = 1.0f - NH_CLAMP((h->me->player.cursor_y - 120.0f) / 240.0f, 0.0f, 1.0f);
     for (int k = 0; k < 150; k++) {
         float x = (float)k / 150.0f;
         float yt = sinf(x * (2.0f + tf * 14.0f) * 3.14159f + (float)h->tick * 0.05f) * ta * 100.0f;
@@ -176,7 +178,7 @@ static void draw_hack(const Heist *h)
 static void draw_gadgets(const Heist *h)
 {
     const NhJob *j = &h->state;
-    int g = j->gadget;
+    int g = h->me->gadget;
     const NhGadgetInfo *gi = &nh_gadgets[g];
     panel(232, 436, 176, 30);
     if (gi->charges == 255)
@@ -186,12 +188,12 @@ static void draw_gadgets(const Heist *h)
     text_draw(238, 456, 1, DIM, gi->hint);
     /* Bag and hands */
     text_printf(20, 410, 1, FG, "BAG $%d  (%d/%d)", j->bag_value * 10, j->bag_items, j->bag_cap);
-    if (j->holding >= 0)
+    if (h->me->holding >= 0)
         text_draw(20, 398, 1, HI, "Carrying loot");
-    if (j->carrying >= 0)
+    if (h->me->carrying >= 0)
         text_draw(20, 398, 1, HI, "Carrying a body");
-    if (h->thermal)
-        text_printf(470, 410, 1, HI, "THERMAL %d%%", (int)(h->thermal_battery * 100));
+    if (h->me->thermal)
+        text_printf(470, 410, 1, HI, "THERMAL %d%%", (int)(h->me->thermal_battery * 100));
     int keys = 0;
     for (int k = 0; k < 32; k++)
         keys += (j->keycards >> k) & 1u;
@@ -201,7 +203,7 @@ static void draw_gadgets(const Heist *h)
 
 static void draw_prompt(const Heist *h)
 {
-    const Action *a = &h->act;
+    const Action *a = &h->me->act;
     if (a->kind == ACT_NOTHING)
         return;
     char buf[64];
@@ -209,9 +211,9 @@ static void draw_prompt(const Heist *h)
     float w = text_width(buf, 2);
     text_rect(320 - w * 0.5f - 6, 316, w + 12, 20, nh_rgba(0, 0, 0, 140));
     centered(320, 2, a->blocked ? DIM : FG, buf);
-    if (a->hold > 0.0f && h->hold_t > 0.0f) {
+    if (a->hold > 0.0f && h->me->hold_t > 0.0f) {
         text_rect(320 - 60, 340, 120, 6, nh_rgba(40, 40, 40, 200));
-        text_rect(320 - 60, 340, 120 * NH_MIN(1.0f, h->hold_t / a->hold), 6, HI);
+        text_rect(320 - 60, 340, 120 * NH_MIN(1.0f, h->me->hold_t / a->hold), 6, HI);
     }
 }
 
@@ -246,18 +248,10 @@ static void draw_hiding(void)
         text_rect(0, 150 + (float)k * 32, 640, 12, nh_rgba(0, 0, 0, 200));
 }
 
-void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
+void hud_draw_overlay(const Heist *h)
 {
     if (h->screen == SCR_SUMMARY) {
         hud_draw_summary(h);
-        return;
-    }
-    if (h->screen == SCR_MAP) {
-        hud_draw_map(h);
-        return;
-    }
-    if (h->screen == SCR_OBJECTIVES) {
-        hud_draw_objectives(h);
         return;
     }
     if (h->screen == SCR_PAUSE) {
@@ -278,8 +272,25 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
         }
         return;
     }
-    const NhPlayer *p = &h->player;
-    if (h->hide_prop >= 0)
+}
+
+void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
+{
+    s_aspect = h->me->aspect;
+    if (h->screen == SCR_SUMMARY || h->screen == SCR_PAUSE)
+        return; /* drawn once, over the whole screen */
+    if (h->me->view == SCR_MAP) {
+        hud_draw_map(h);
+        return;
+    }
+    if (h->me->view == SCR_OBJECTIVES) {
+        hud_draw_objectives(h);
+        return;
+    }
+    if (h->nplayers > 1)
+        text_draw(8, 8, 2, h->me->index ? nh_rgba(120, 200, 255, 255) : HI, h->me->index ? "P2" : "P1");
+    const NhPlayer *p = &h->me->player;
+    if (h->me->hide_prop >= 0)
         draw_hiding();
     /* Cursor: a small ring that dims when the pointer is lost. */
     float cx = p->cursor_x, cy = p->cursor_y;
@@ -300,28 +311,28 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
         text_rect(320 + bw - 12, 240 + bh, 12, 2, bc);
     }
     /* Light meter (bottom left): how visible the player is. */
-    float lv = NH_MAX(h->light_level, h->ai.player_light);
+    float lv = NH_MAX(h->me->light_level, h->ai.player_light);
     text_rect(20, 446, 104, 14, nh_rgba(0, 0, 0, 120));
     NhColor lc = nh_rgba((uint8_t)(90 + 165 * lv), (uint8_t)(90 + 140 * lv), (uint8_t)(70 + 60 * lv), 230);
     text_rect(22, 448, 100 * lv, 10, lc);
-    text_draw(22, 430, 2, DIM, h->hide_prop >= 0 ? "HIDDEN" : p->crouch > 0.5f ? "LIGHT  crouched" : "LIGHT");
+    text_draw(22, 430, 2, DIM, h->me->hide_prop >= 0 ? "HIDDEN" : p->crouch > 0.5f ? "LIGHT  crouched" : "LIGHT");
     /* Torch + battery (bottom right). */
-    text_printf(470, 430, 2, h->torch_on ? HI : DIM, "TORCH %s", h->torch_on ? "ON" : "off");
+    text_printf(470, 430, 2, h->me->torch_on ? HI : DIM, "TORCH %s", h->me->torch_on ? "ON" : "off");
     text_rect(470, 448, 104, 12, nh_rgba(0, 0, 0, 120));
-    text_rect(472, 450, 100 * h->battery, 8, h->battery < 0.2f ? nh_rgba(220, 70, 50, 230) : nh_rgba(120, 200, 120, 230));
+    text_rect(472, 450, 100 * h->me->battery, 8, h->me->battery < 0.2f ? nh_rgba(220, 70, 50, 230) : nh_rgba(120, 200, 120, 230));
     draw_detection(h, view);
     if (h->debug_view)
         draw_ai_labels(h, view);
     if (h->generated)
         draw_gadgets(h);
     draw_timers(h);
-    if (h->mg == MG_KIND_LOCK)
+    if (h->me->mg == MG_KIND_LOCK)
         draw_lockpick(h);
-    else if (h->mg == MG_KIND_SAFE)
+    else if (h->me->mg == MG_KIND_SAFE)
         draw_safe(h);
-    else if (h->mg == MG_KIND_HACK)
+    else if (h->me->mg == MG_KIND_HACK)
         draw_hack(h);
-    else if (h->takedown >= 0)
+    else if (h->me->takedown >= 0)
         centered(340, 2, FG, "A  Takedown");
     else
         draw_prompt(h);
@@ -332,11 +343,17 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
     }
     if (h->ai.alarm && ((h->tick / 30) & 1))
         centered(20, 3, RED, "ALARM");
-    if (h->caught_t > 0.0f) {
-        text_rect(0, 0, 640, 480, nh_rgba(60, 0, 0, (uint8_t)(160 * NH_MIN(1.0f, 2.5f - h->caught_t + 0.2f))));
+    if (h->me->caught_t > 0.0f) {
+        text_rect(0, 0, 640, 480, nh_rgba(60, 0, 0, (uint8_t)(160 * NH_MIN(1.0f, 2.5f - h->me->caught_t + 0.2f))));
         centered(200, 5, RED, "CAUGHT");
-    } else if (h->status_ticks > 0) {
-        centered(290, 2, HI, h->status);
+    } else if (h->me->cuffed) {
+        text_rect(0, 0, 640, 480, nh_rgba(40, 0, 0, 150));
+        centered(170, 4, RED, "CUFFED");
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Your partner can free you (%d s)", (int)(90.0f - h->me->cuffed_t));
+        centered(230, 2, FG, buf);
+    } else if (h->me->status_ticks > 0) {
+        centered(290, 2, HI, h->me->status);
     }
 }
 
@@ -345,7 +362,7 @@ void hud_draw_heist(const Heist *h, const GameSettings *gs, const NhMat34 *view)
 void hud_draw_map(const Heist *h)
 {
     const Level *L = &h->world.L;
-    int f = NH_CLAMP(h->player.floor, 0, L->floors);
+    int f = NH_CLAMP(h->me->player.floor, 0, L->floors);
     text_rect(0, 0, 640, 480, nh_rgba(4, 6, 12, 235));
     text_printf(20, 16, 2, HI, "%s   floor %d", h->job_name, f);
     centered(456, 1, DIM, "+ map   - objectives   B back");
@@ -409,8 +426,8 @@ void hud_draw_map(const Heist *h)
     /* The van and the player */
     if (f == 0)
         text_rect(ox + h->plan.extract[0].x / LV_CELL * cs - 5, oy + h->plan.extract[0].z / LV_CELL * cs - 5, 10, 10, GOOD);
-    float px = ox + h->player.pos.x / LV_CELL * cs, pz = oy + h->player.pos.z / LV_CELL * cs;
-    NhVec3 d = nh_dir_from_yaw_pitch(h->player.yaw, 0);
+    float px = ox + h->me->player.pos.x / LV_CELL * cs, pz = oy + h->me->player.pos.z / LV_CELL * cs;
+    NhVec3 d = nh_dir_from_yaw_pitch(h->me->player.yaw, 0);
     text_rect(px - 3, pz - 3, 7, 7, FG);
     text_rect(px + d.x * 8 - 1, pz + d.z * 8 - 1, 3, 3, FG);
 }
@@ -441,7 +458,7 @@ void hud_draw_objectives(const Heist *h)
     for (int g = 1; g < GD_COUNT; g++) {
         if (!j->charges[g])
             continue;
-        text_printf(40 + (float)((g - 1) % 2) * 290, y, 1, g == j->gadget ? HI : FG, "%s %s", nh_gadgets[g].name,
+        text_printf(40 + (float)((g - 1) % 2) * 290, y, 1, g == h->me->gadget ? HI : FG, "%s %s", nh_gadgets[g].name,
                     nh_gadgets[g].charges == 255 ? "" : "");
         if ((g - 1) % 2 == 1)
             y += 14;
@@ -483,7 +500,7 @@ void hud_draw_summary(const Heist *h)
 void hud_draw_debug(const Heist *h, float fps)
 {
     const World *w = &h->world;
-    const NhPlayer *p = &h->player;
+    const NhPlayer *p = &h->me->player;
     GfxStats st = gfx_last_stats();
     NhMemStats mem;
     plat_mem_stats(&mem);
@@ -509,7 +526,7 @@ void hud_draw_debug(const Heist *h, float fps)
     y += lh;
     text_printf(x, y, 2, FG, "pos %.1f %.1f %.1f  f%d", p->pos.x, p->pos.y, p->pos.z, p->floor);
     y += lh;
-    text_printf(x, y, 2, FG, "%s #%d  light %.2f", rname, room, h->light_level);
+    text_printf(x, y, 2, FG, "%s #%d  light %.2f", rname, room, h->me->light_level);
     y += lh;
     text_printf(x, y, 2, DIM, "1 dbg 2 view +seed -type C door");
     y += lh + 6;

@@ -9,5 +9,7 @@ void text_draw(float x, float y, float scale, NhColor color, const char *str);
 void text_printf(float x, float y, float scale, NhColor color, const char *fmt, ...);
 void text_rect(float x, float y, float w, float h, NhColor color);
 float text_width(const char *str, float scale);
+/* Stretch small text (scale <= 1.5) vertically by k; 2 in a half-height co-op view. */
+void text_set_tall(float k);
 
 #endif

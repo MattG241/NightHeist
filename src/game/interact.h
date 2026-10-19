@@ -14,6 +14,8 @@ void interact_update(Heist *h, const NhInput *in, const GameSettings *gs);
 bool interact_busy(const Heist *h);
 /* Leave a hiding spot (also when a guard pulls you out). */
 void interact_unhide(Heist *h);
+/* Drop a carried body or heavy loot, leave a minigame and any hiding spot. */
+void interact_drop_all(Heist *h);
 /* Keep a carried body with the player. */
 void interact_carry_tick(Heist *h);
 /* Short name of a prop type for prompts. */

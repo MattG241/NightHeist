@@ -119,6 +119,16 @@ void gfx_draw_quad3d(GfxTexture tex, const NhVec3 corners[4], float u0, float v0
 void gfx_draw_quad2d(GfxTexture tex, float x, float y, float w, float h, float u0, float v0, float u1,
                      float v1, NhColor color);
 
+/* Split screen. The 3D view goes into this rectangle of the 640x480 screen
+ * (pending world-space quads are drawn first, with the previous camera), and
+ * gfx_set_camera uses its shape for the aspect ratio. Reset to the whole
+ * screen by gfx_begin_frame. */
+void gfx_set_viewport(int x, int y, int w, int h);
+/* 2D quads submitted from now on are placed at (ox + x * sx, oy + y * sy), so
+ * a 640x480 HUD can be drawn into one player's part of the screen. Reset by
+ * gfx_begin_frame. */
+void gfx_set_2d_region(float ox, float oy, float sx, float sy);
+
 /* Flush, present and wait for vertical sync. */
 void gfx_end_frame(void);
 GfxStats gfx_last_stats(void);

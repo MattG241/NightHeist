@@ -39,6 +39,14 @@ void guards_draw(const GuardsVis *gv, const AiWorld *ai, const World *w, float a
 /* Lens glows (additive sprites); call in the 3D pass after guards_draw. */
 void guards_draw_glows(const GuardsVis *gv, const AiWorld *ai, const World *w, const NhMat34 *view,
                        float alpha);
+/* Co-op: how to draw the other player. */
+typedef struct ThiefVis {
+    NhVec3 pos;
+    float yaw, speed, anim_t;
+    bool cuffed;
+} ThiefVis;
+void guards_draw_thief(const World *w, const ThiefVis *t, bool xray, NhVec3 eye);
+
 /* Debug: view cones and paths on the floor. */
 void guards_draw_debug(const AiWorld *ai, const World *w);
 

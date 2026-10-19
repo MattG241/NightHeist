@@ -319,3 +319,43 @@ void guards_draw_debug(const AiWorld *ai, const World *w)
         }
     }
 }
+
+/* Co-op: the other player, drawn with the guard model in dark clothes. */
+void guards_draw_thief(const World *w, const ThiefVis *t, bool xray, NhVec3 eye)
+{
+    const ResModel *rm = res_model("guard");
+    if (!rm || !rm->loaded)
+        return;
+    int f = lv_floor_of(t->pos.y + 0.3f);
+    int room = lv_room_at(&w->L, f, lv_cell_of(t->pos.x), lv_cell_of(t->pos.z));
+    if (room == LV_ROOM_VOID)
+        room = LV_ROOM_OUTSIDE;
+    bool through = xray && nh_v3_dist(t->pos, eye) < 30.0f;
+    if (!through && !w->visible[room])
+        return;
+    const char *clip = t->cuffed ? "knockout" : t->speed > 3.0f ? "run" : t->speed > 0.3f ? "walk" : "idle";
+    const NhAnimClip *c = res_anim(clip);
+    NhPose pose;
+    nh_pose_bind(&rm->model, &pose);
+    if (c)
+        nh_anim_sample(c, t->cuffed ? 10.0f : t->anim_t, &pose, rm->model.nbones);
+    NhMat34 world;
+    root_matrix(t->pos, t->yaw, &world);
+    NhMat34 skin[NH_SKEL_MAX];
+    nh_pose_skin(&rm->model, &pose, &world, skin);
+    NhColor amb = world_ambient_at(w, nh_v3_add(t->pos, nh_v3(0, 1.0f, 0)));
+    for (int k = 0; k < rm->model.nparts; k++) {
+        const NhModelPart *part = &rm->model.parts[k];
+        NhMat34 slots[NH_MAX_BONES];
+        for (int s = 0; s < part->nslots; s++)
+            slots[s] = skin[part->slots[s]];
+        GfxMaterial mat = *res_mat(rm->part_mat[k]);
+        mat.flags &= (uint16_t)~(GFX_MAT_BAKED | GFX_MAT_UNLIT);
+        mat.ambient = amb;
+        mat.tint = nh_rgba(80, 82, 104, 255); /* blacks and a balaclava */
+        mat.flags |= GFX_MAT_WARM | GFX_MAT_VCOLOR;
+        if (through)
+            mat.flags |= GFX_MAT_XRAY;
+        gfx_draw_skinned(rm->parts[k], &mat, slots, part->nslots);
+    }
+}

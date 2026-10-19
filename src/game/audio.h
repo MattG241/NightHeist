@@ -16,6 +16,8 @@ void audio_volumes(int music, int sfx);
 void audio_play(int sfx, float vol, float pan, float pitch);
 /* The listener for positioned effects. L may be NULL (no occlusion). */
 void audio_listener(NhVec3 pos, float yaw, int floor, const Level *L);
+/* Split-screen: up to two listeners; each sound plays as loud as the nearer one hears it. */
+void audio_listeners(const NhVec3 *pos, const float *yaw, const int *floor, int n, const Level *L);
 /* A positioned effect, silent beyond `range` metres; a little random pitch. */
 void audio_at(int sfx, NhVec3 pos, float vol, float range);
 

@@ -22,6 +22,7 @@ void hideout_init(Hideout *ho)
 {
     memset(ho, 0, sizeof(*ho));
     ho->plan = -1;
+    ho->players = 1;
 }
 
 void hideout_payday(Hideout *ho, const NhPayday *pay, const char *title)
@@ -141,7 +142,16 @@ static HideAction tick_menu(Hideout *ho, NhCampaign *c, NhSaveSettings *s, const
         ho->plan = -1;
         ho->sel = 0;
         return HA_NONE;
+    } else if (in->pressed & (NH_BTN_LEFT | NH_BTN_RIGHT)) {
+        /* Planning: the D-pad picks one or two players. */
+        if (ho->players == 1 && !ho->p2_connected)
+            say(ho, "Connect Wii Remote 2 (with a Nunchuk) for co-op");
+        else
+            ho->players = ho->players == 1 ? 2 : 1;
+        return HA_NONE;
     }
+    if (!ho->p2_connected)
+        ho->players = 1;
     int nrows = rows_in_tab(ho, c);
     if (in->pressed & NH_BTN_DOWN)
         ho->sel = (ho->sel + 1) % NH_MAX(1, nrows);
@@ -317,6 +327,9 @@ static void draw_plan(const Hideout *ho, const NhCampaign *c)
     row_box(ho, CR_COUNT, gy, 34);
     text_draw(32, gy + 7, 3, HI, "GO");
     text_draw(120, gy + 12, 1, DIM, "B: back to the board");
+    text_printf(330, gy + 4, 2, ho->players > 1 ? GOOD : FG, "%s", ho->players > 1 ? "2 PLAYERS" : "1 PLAYER");
+    text_draw(330, gy + 22, 1, DIM,
+              ho->p2_connected ? "D-pad left/right: co-op split screen" : "co-op: connect Wii Remote 2");
 }
 
 static void draw_crew(const Hideout *ho, const NhCampaign *c)

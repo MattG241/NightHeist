@@ -311,7 +311,7 @@ static void move_guard(AiWorld *w, AiGuard *g, float dt)
 float ai_visibility(const AiWorld *w, const AiGuard *g, const AiPlayerView *pv, float *dist)
 {
     *dist = 1e9f;
-    if (pv->in_vent || pv->hiding_prop >= 0 || g->asleep || down_state(g->state))
+    if (pv->in_vent || pv->hiding_prop >= 0 || pv->cuffed || g->asleep || down_state(g->state))
         return 0.0f;
     const AiArchInfo *a = A(g);
     NhVec3 eye = ai_guard_eye(g);
@@ -374,7 +374,7 @@ float ai_point_visibility(const AiWorld *w, NhVec3 eye, NhVec3 fwd, float fov_de
                           float *dist)
 {
     *dist = 1e9f;
-    if (pv->in_vent || pv->hiding_prop >= 0)
+    if (pv->in_vent || pv->hiding_prop >= 0 || pv->cuffed)
         return 0.0f;
     NhVec3 chest = nh_v3(pv->pos.x, pv->pos.y + pv->height * 0.62f, pv->pos.z);
     NhVec3 to = nh_v3_sub(chest, eye);
@@ -811,12 +811,17 @@ static void do_search(AiWorld *w, AiGuard *g, const AiPlayerView *pv, float dt)
         if (arrived && prop >= 0) {
             const LvProp *p = &w->L->props[prop];
             g->yaw = yaw_to(g->pos, nh_v3(p->x, p->y, p->z));
-            if (pv->hiding_prop == prop) {
-                emit(w, EV_FOUND_HIDING, (int)(g - w->g), 0, pv->pos);
-                bark(w, g, BARK_FOUND, true);
-                go_alert(w, g, pv->pos, true);
-                return;
+            for (int v = 0; v < w->nviews; v++) {
+                const AiPlayerView *hv = &w->views[v];
+                if (hv->hiding_prop == prop) {
+                    g->target = (uint8_t)v;
+                    emit(w, EV_FOUND_HIDING, (int)(g - w->g), v, hv->pos);
+                    bark(w, g, BARK_FOUND, true);
+                    go_alert(w, g, hv->pos, true);
+                    return;
+                }
             }
+            (void)pv;
         }
         g->wait_t = prop >= 0 ? 1.2f : 1.4f + rngf(w) * 1.2f;
     }
@@ -1056,24 +1061,28 @@ static void guard_tick(AiWorld *w, int gi, const AiPlayerView *pv, float dt)
             if (calm_state(g->state) || g->state == AS_SUSPICIOUS)
                 g->suspicion = NH_MAX(0.0f, g->suspicion - a->decay * dtp);
         }
-        /* The torch beam sweeping across a wall in front of them. */
-        if (pv->torch_on && pv->beam_valid && !g->asleep && g->arch != ARCH_DOG) {
+        /* Torch beams sweeping across a wall in front of them (every player's). */
+        for (int v = 0; v < w->nviews; v++) {
+            const AiPlayerView *bv = &w->views[v];
+            if (!bv->torch_on || !bv->beam_valid || bv->cuffed || g->asleep || g->arch == ARCH_DOG)
+                continue;
             NhVec3 eye = ai_guard_eye(g);
-            NhVec3 to = nh_v3_sub(pv->beam_hit, eye);
+            NhVec3 to = nh_v3_sub(bv->beam_hit, eye);
             float bd = nh_v3_len(to);
             if (bd < 22.0f && bd > 0.5f &&
                 nh_v3_dot(nh_v3_norm(nh_v3(to.x, 0, to.z)), ai_guard_dir(g)) > cosf(a->fov_deg * 0.5f * NH_PI / 180.0f)) {
-                NhVec3 back = nh_v3_sub(pv->beam_hit, nh_v3_scale(to, 0.15f / bd));
+                NhVec3 back = nh_v3_sub(bv->beam_hit, nh_v3_scale(to, 0.15f / bd));
                 float t;
                 if (!lv_raycast(w->L, eye, back, &t)) {
                     g->suspicion += 0.45f * a->gain * w->difficulty * dtp * (1.0f - bd / 22.0f + 0.3f);
                     if (gain <= 0.0f)
-                        g->stim = pv->beam_hit;
+                        g->stim = bv->beam_hit;
                 }
             }
         }
-        for (int i = 0; i < pv->nnoise; i++)
-            hear(w, g, &pv->noises[i], dtp);
+        for (int v = 0; v < w->nviews; v++)
+            for (int i = 0; i < w->views[v].nnoise; i++)
+                hear(w, g, &w->views[v].noises[i], dtp);
         for (int i = 0; i < w->npending; i++)
             hear(w, g, &w->pending[i], dtp);
         see_anomalies(w, g, gi);
@@ -1181,9 +1190,12 @@ static void guard_tick(AiWorld *w, int gi, const AiPlayerView *pv, float dt)
     case AS_ALERT: {
         bool sees = g->vis > 0.0f && g->seen_t < 0.2f;
         float pd = nh_v3_dist(g->pos, pv->pos);
-        if (sees && pd < CATCH_DIST && g->arch != ARCH_DOG && !w->caught) {
-            w->caught = gi + 1;
-            emit(w, EV_CAUGHT, gi, 0, pv->pos);
+        uint8_t bit = (uint8_t)(1u << g->target);
+        if (sees && pd < CATCH_DIST && g->arch != ARCH_DOG && !(w->caught_mask & bit) && !pv->cuffed) {
+            w->caught_mask |= bit;
+            if (!w->caught)
+                w->caught = gi + 1;
+            emit(w, EV_CAUGHT, gi, g->target, pv->pos);
         }
         if (g->arch == ARCH_DOG && sees && pd < 2.0f && g->bark_cd <= 0.0f) {
             emit(w, EV_DOG_BARK, gi, 0, g->pos);
@@ -1265,8 +1277,49 @@ static float torch_light_on_player(const AiWorld *w, const AiPlayerView *pv)
     return best;
 }
 
-void ai_tick(AiWorld *w, const AiPlayerView *pv_in)
+void ai_tick(AiWorld *w, const AiPlayerView *pv) { ai_tick_views(w, pv, 1); }
+
+void ai_release_caught(AiWorld *w, int view)
 {
+    if (view >= 0 && view < AI_MAX_VIEWS)
+        w->caught_mask &= (uint8_t)~(1u << view);
+}
+
+/* Which player a guard watches: the one it sees best; while hunting with
+ * nobody in sight it keeps its quarry; otherwise the nearest. */
+static int pick_target(const AiWorld *w, const AiGuard *g, const AiPlayerView *views, int n)
+{
+    if (n <= 1)
+        return 0;
+    int best = -1;
+    float bv = 0.0f;
+    for (int v = 0; v < n; v++) {
+        float d;
+        float vis = ai_visibility(w, g, &views[v], &d);
+        if (vis > bv) {
+            bv = vis;
+            best = v;
+        }
+    }
+    if (best >= 0)
+        return best;
+    int cur = g->target < n ? g->target : 0;
+    if ((g->state == AS_ALERT || g->state == AS_SEARCH) && !views[cur].cuffed)
+        return cur;
+    float bd = 1e9f;
+    for (int v = 0; v < n; v++) {
+        float d = nh_v3_dist(g->pos, views[v].pos) + (views[v].cuffed ? 1000.0f : 0.0f);
+        if (d < bd) {
+            bd = d;
+            best = v;
+        }
+    }
+    return best < 0 ? 0 : best;
+}
+
+void ai_tick_views(AiWorld *w, const AiPlayerView *views_in, int n)
+{
+    n = NH_CLAMP(n, 1, AI_MAX_VIEWS);
     const float dt = NH_TICK_DT;
     w->nev = 0;
     for (int i = 0; i < (int)NH_ARRAY_LEN(w->smoke); i++)
@@ -1281,13 +1334,23 @@ void ai_tick(AiWorld *w, const AiPlayerView *pv_in)
                 ai_knockout(w, i);
         }
     }
-    AiPlayerView lit = *pv_in;
-    lit.light = NH_MAX(lit.light, torch_light_on_player(w, pv_in));
-    const AiPlayerView *pv = &lit;
-    w->player_light = lit.light;
-    for (int i = 0; i < w->n; i++)
-        if (w->g[i].active)
-            guard_tick(w, i, pv, dt);
+    AiPlayerView lit[AI_MAX_VIEWS];
+    for (int v = 0; v < n; v++) {
+        lit[v] = views_in[v];
+        lit[v].light = NH_MAX(lit[v].light, torch_light_on_player(w, &views_in[v]));
+        w->view_light[v] = lit[v].light;
+    }
+    w->player_light = lit[0].light;
+    w->views = lit;
+    w->nviews = n;
+    for (int i = 0; i < w->n; i++) {
+        AiGuard *g = &w->g[i];
+        if (!g->active)
+            continue;
+        if (n > 1 && ((w->tick + (uint32_t)i) & 1u) == 0 && !down_state(g->state))
+            g->target = (uint8_t)pick_target(w, g, lit, n);
+        guard_tick(w, i, &lit[NH_MIN(g->target, n - 1)], dt);
+    }
     /* Pending distractions are heard on the tick each guard thinks; keep them
      * for two ticks so the staggered halves both get them. */
     if (w->tick & 1u)
@@ -1322,6 +1385,8 @@ void ai_tick(AiWorld *w, const AiPlayerView *pv_in)
         mx = NH_MAX(mx, s);
     }
     w->max_suspicion = mx;
+    w->views = NULL; /* points at this frame's copies */
+    w->nviews = 0;
     w->tick++;
 }
 

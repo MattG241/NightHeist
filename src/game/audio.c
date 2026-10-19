@@ -24,9 +24,10 @@ static struct {
     int stem_voice[NH_MUSIC_LAYERS];
     float stem_level[NH_MUSIC_LAYERS], stem_target[NH_MUSIC_LAYERS];
     Loop loops[MAX_LOOPS];
-    NhVec3 lpos;
-    float lyaw;
-    int lfloor;
+    NhVec3 lpos[2];
+    float lyaw[2];
+    int lfloor[2];
+    int nlisteners;
     const Level *L;
     NhRng rng;
 } A = { .theme = -1 };
@@ -104,18 +105,43 @@ void audio_play(int sfx, float vol, float pan, float pitch)
     plat_audio_play(&s, vol * A.sfx_gain, pan);
 }
 
-void audio_listener(NhVec3 pos, float yaw, int floor, const Level *L)
+void audio_listener(NhVec3 pos, float yaw, int floor, const Level *L) { audio_listeners(&pos, &yaw, &floor, 1, L); }
+
+void audio_listeners(const NhVec3 *pos, const float *yaw, const int *floor, int n, const Level *L)
 {
-    A.lpos = pos;
-    A.lyaw = yaw;
-    A.lfloor = floor;
+    A.nlisteners = NH_CLAMP(n, 1, 2);
+    for (int i = 0; i < A.nlisteners; i++) {
+        A.lpos[i] = pos[i];
+        A.lyaw[i] = yaw[i];
+        A.lfloor[i] = floor[i];
+    }
     A.L = L;
 }
 
-/* Distance falloff, a wall or floor between muffles it, panned by bearing. */
+/* Distance falloff, a wall or floor between muffles it, panned by bearing;
+ * with two listeners, whoever hears it loudest. */
+static bool place_for(int li, NhVec3 pos, float range, float *vol, float *pan);
+
 static bool place(NhVec3 pos, float range, float *vol, float *pan)
 {
-    NhVec3 d = nh_v3_sub(pos, A.lpos);
+    float best = -1.0f, bp = 0.0f;
+    for (int i = 0; i < NH_MAX(1, A.nlisteners); i++) {
+        float v = *vol, p = 0.0f;
+        if (place_for(i, pos, range, &v, &p) && v > best) {
+            best = v;
+            bp = p;
+        }
+    }
+    if (best < 0.0f)
+        return false;
+    *vol = best;
+    *pan = A.nlisteners > 1 ? bp * 0.5f : bp; /* one TV, two people: keep it central */
+    return true;
+}
+
+static bool place_for(int li, NhVec3 pos, float range, float *vol, float *pan)
+{
+    NhVec3 d = nh_v3_sub(pos, A.lpos[li]);
     float dist = nh_v3_len(d);
     if (dist >= range)
         return false;
@@ -123,11 +149,11 @@ static bool place(NhVec3 pos, float range, float *vol, float *pan)
     *vol *= k * k;
     if (A.L) {
         int f = lv_floor_of(pos.y + 0.3f);
-        if (f != A.lfloor)
+        if (f != A.lfloor[li])
             *vol *= 0.35f;
         else if (dist > 1.0f) {
             float t;
-            NhVec3 from = nh_v3_add(A.lpos, nh_v3(0, -0.1f, 0)), to = nh_v3(pos.x, pos.y + 0.4f, pos.z);
+            NhVec3 from = nh_v3_add(A.lpos[li], nh_v3(0, -0.1f, 0)), to = nh_v3(pos.x, pos.y + 0.4f, pos.z);
             if (lv_raycast(A.L, from, to, &t))
                 *vol *= 0.45f;
         }
@@ -135,7 +161,7 @@ static bool place(NhVec3 pos, float range, float *vol, float *pan)
     float flat = sqrtf(d.x * d.x + d.z * d.z);
     if (flat > 0.3f) {
         /* Forward is (-sin yaw, -cos yaw); right is (cos yaw, -sin yaw). */
-        float rx = cosf(A.lyaw), rz = -sinf(A.lyaw);
+        float rx = cosf(A.lyaw[li]), rz = -sinf(A.lyaw[li]);
         *pan = 0.8f * (d.x * rx + d.z * rz) / flat;
     } else {
         *pan = 0.0f;

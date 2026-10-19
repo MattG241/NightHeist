@@ -30,6 +30,8 @@ The game:
   reputation.
 - **Audio.** Every sound and all the music is synthesised at boot. The music
   layers up as guards get suspicious.
+- **Local co-op.** Two players in split screen with two Wii Remotes and
+  Nunchuks, in the same campaign.
 
 The code is portable C11 with two backends:
 
@@ -97,6 +99,33 @@ On a job:
 - Keep your torch off when someone could see the beam.
 - Watch the detection markers above guards' heads.
 
+## Co-op
+
+1. Connect a second Wii Remote with a Nunchuk.
+2. In the safehouse, pick a job.
+3. On the plan screen, press left or right on the D-pad to choose
+   **2 PLAYERS**, then GO.
+
+How it plays:
+
+- The screen splits top and bottom: player 1 on top, player 2 below.
+- Each remote points across the whole TV, and its pointer drives its own
+  view.
+- You share the kit, the gadget charges, the keycards and codes, and one
+  bigger bag (×1.5).
+- Each player has their own torch, thermal goggles, gadget choice and
+  hands.
+- Guards and cameras watch whichever of you they can see best, and hear
+  both of you.
+- If a guard catches one of you, that player is cuffed where they stand
+  and the alarm goes up.
+  - The other player has 90 seconds to reach them and hold C to free them.
+  - The van won't leave without a cuffed partner.
+  - If both of you are caught, or time runs out, you're busted.
+- Either player's HOME pauses the game for both.
+- Each player has their own map and objectives (+ and −), and the job
+  carries on while you read them.
+
 ## Building
 
 | Target | What it does |
@@ -142,6 +171,7 @@ options:
 | `--script FILE` | Scripted input, one `FRAME command` per line: `ir X Y`, `noir`, `stick X Y`, `press BTN`, `hold BTN`, `release BTN`, `twist DEG`, `shot NAME`, `quit` |
 | `--screenshot PREFIX` | Where script shots are saved |
 | `--overlay` | Start with the debug overlay on |
+| `--coop` | Make the `--job` building a two-player split-screen job |
 | `--wide` | Emulate a 16:9 Wii |
 | `--novsync` | Don't wait for vertical sync |
 
@@ -149,7 +179,22 @@ On a Wii or in Dolphin, `apps/NightHeist/debug_start.txt` does the same:
 
 - a line `job TYPE,SIZE,SEED,SECURITY` picks a building;
 - a line `x,y,z,yaw,pitch` sets the start;
-- a line `overlay` turns the debug overlay on.
+- a line `overlay` turns the debug overlay on;
+- a line `coop` makes that job two-player.
+
+On desktop, player 2 uses a gamepad:
+
+| Gamepad | Action |
+|---|---|
+| Left stick | Move |
+| Right stick | Pointer |
+| A / B | A / B |
+| X | C |
+| Left shoulder | Z |
+| Triggers | Twist the remote |
+| D-pad, Start, Back, Guide | D-pad, +, −, HOME |
+
+In scripts, prefix a command with `p2`, as in `120 p2 stick 0 1`.
 
 ## Repository layout
 

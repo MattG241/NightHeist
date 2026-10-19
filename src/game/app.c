@@ -178,8 +178,8 @@ int nh_app_run(const NhPlatformArgs *args)
         job.seed = jseed;
         job.security = (uint8_t)NH_CLAMP(jsec, 0, 4);
         loading_screen(use_test ? "building the test building..." : "casing the job...");
-        if (!heist_start(&s_heist, use_test ? NULL : &job, NULL, NULL, s_save_settings.difficulty, &s_level,
-                         &s_scratch)) {
+        if (!heist_start(&s_heist, use_test ? NULL : &job, NULL, NULL, s_save_settings.difficulty,
+                         plat_debug_coop() ? 2 : 1, &s_level, &s_scratch)) {
             fprintf(stderr, "failed to build the level\n");
             plat_shutdown();
             return 4;
@@ -194,25 +194,33 @@ int nh_app_run(const NhPlatformArgs *args)
     uint64_t fps_start = last;
     uint32_t fps_frames = 0;
     float fps = 0.0f;
-    uint32_t pending_pressed = 0, pending_released = 0;
+    uint32_t pending_pressed[NH_MAX_PLAYERS] = { 0 }, pending_released[NH_MAX_PLAYERS] = { 0 };
 
     while (!plat_should_quit()) {
         uint64_t now = plat_time_us();
         int ticks = nh_fixedstep_advance(&step, now - last);
         last = now;
 
-        NhInput in;
-        plat_input_poll(&in);
+        NhInput ins[NH_MAX_PLAYERS];
+        for (int p = 0; p < NH_MAX_PLAYERS; p++)
+            plat_input_poll(p, &ins[p]);
+        s_hideout.p2_connected = ins[1].connected && ins[1].nunchuk;
 
         /* Edges must reach exactly one tick even on frames that run zero ticks. */
-        pending_pressed |= in.pressed;
-        pending_released |= in.released;
+        for (int p = 0; p < NH_MAX_PLAYERS; p++) {
+            pending_pressed[p] |= ins[p].pressed;
+            pending_released[p] |= ins[p].released;
+        }
         int start_job = -1;
         for (int i = 0; i < ticks; i++) {
-            NhInput tick_in = in;
-            tick_in.pressed = pending_pressed;
-            tick_in.released = pending_released;
-            pending_pressed = pending_released = 0;
+            NhInput tick_ins[NH_MAX_PLAYERS];
+            for (int p = 0; p < NH_MAX_PLAYERS; p++) {
+                tick_ins[p] = ins[p];
+                tick_ins[p].pressed = pending_pressed[p];
+                tick_ins[p].released = pending_released[p];
+                pending_pressed[p] = pending_released[p] = 0;
+            }
+            NhInput tick_in = tick_ins[0];
             audio_tick(NH_TICK_DT);
             if (s_mode == MODE_TITLE) {
                 TitleAction ta = title_tick(&s_title, &tick_in);
@@ -228,7 +236,7 @@ int nh_app_run(const NhPlatformArgs *args)
                     audio_music_mix(k_safe_mix);
                 }
             } else if (s_mode == MODE_HEIST) {
-                heist_tick(&s_heist, &tick_in, &s_settings);
+                heist_tick(&s_heist, tick_ins, &s_settings);
             } else if (tick_in.pressed & NH_BTN_HOME) {
                 /* Back to the title (the career is saved after every change). */
                 save_game();
@@ -270,7 +278,8 @@ int nh_app_run(const NhPlatformArgs *args)
             nh_arena_reset(&s_level);
             nh_arena_reset(&s_scratch);
             loading_screen("casing the job...");
-            if (!heist_start(&s_heist, &gp, &s_camp, &s_offer, s_save_settings.difficulty, &s_level, &s_scratch))
+            if (!heist_start(&s_heist, &gp, &s_camp, &s_offer, s_save_settings.difficulty, s_hideout.players, &s_level,
+                             &s_scratch))
                 break;
             s_mode = MODE_HEIST;
             audio_music(THEME_HEIST);
@@ -289,14 +298,16 @@ int nh_app_run(const NhPlatformArgs *args)
             s_mode = MODE_HIDEOUT;
             audio_music(THEME_SAFEHOUSE);
             audio_music_mix(k_safe_mix);
-            plat_rumble(false);
+            plat_rumble(0, false);
+            plat_rumble(1, false);
         } else if (s_mode == MODE_HEIST && s_heist.want_rebuild) {
             NhGenParams next = s_heist.job;
             heist_end(&s_heist);
             nh_arena_reset(&s_level);
             nh_arena_reset(&s_scratch);
             loading_screen("casing the job...");
-            if (!heist_start(&s_heist, &next, NULL, NULL, s_save_settings.difficulty, &s_level, &s_scratch))
+            if (!heist_start(&s_heist, &next, NULL, NULL, s_save_settings.difficulty, s_heist.nplayers, &s_level,
+                             &s_scratch))
                 break;
             last = plat_time_us();
         }
@@ -305,7 +316,8 @@ int nh_app_run(const NhPlatformArgs *args)
     if (s_mode == MODE_HEIST)
         heist_end(&s_heist);
     save_game();
-    plat_rumble(false);
+    plat_rumble(0, false);
+    plat_rumble(1, false);
     plat_shutdown();
     return 0;
 }

@@ -604,13 +604,38 @@ static void m34_to_44(const NhMat34 *in, float out[16])
     out[15] = 1.0f;
 }
 
+static int s_vp[4] = { 0, 0, GFX_SCREEN_W, GFX_SCREEN_H };
+static float s_r2d[4] = { 0, 0, 1, 1 };
+
+static void flush_quads(Quad *qs, int n, bool is3d);
+
+static void apply_viewport(void)
+{
+    p_glViewport(s_vp[0], GFX_SCREEN_H - (s_vp[1] + s_vp[3]), s_vp[2], s_vp[3]);
+}
+
+void gfx_set_viewport(int x, int y, int w, int h)
+{
+    flush_quads(s_q3d, s_nq3d, true);
+    s_nq3d = 0;
+    s_vp[0] = x, s_vp[1] = y, s_vp[2] = w, s_vp[3] = h;
+    apply_viewport();
+}
+
+void gfx_set_2d_region(float ox, float oy, float sx, float sy)
+{
+    s_r2d[0] = ox, s_r2d[1] = oy, s_r2d[2] = sx, s_r2d[3] = sy;
+}
+
 void gfx_begin_frame(NhColor clear)
 {
     s_cur = (GfxStats){ 0 };
     s_nq2d = 0;
     s_nq3d = 0;
     p_glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
-    p_glViewport(0, 0, GFX_SCREEN_W, GFX_SCREEN_H);
+    s_vp[0] = s_vp[1] = 0, s_vp[2] = GFX_SCREEN_W, s_vp[3] = GFX_SCREEN_H;
+    apply_viewport();
+    gfx_set_2d_region(0, 0, 1, 1);
     p_glDepthMask(GL_TRUE);
     p_glClearColor(clear.r / 255.0f, clear.g / 255.0f, clear.b / 255.0f, 1.0f);
     p_glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -623,7 +648,7 @@ void gfx_begin_frame(NhColor clear)
 void gfx_set_camera(const NhMat34 *view, float fovy_deg, float znear, float zfar)
 {
     float f = 1.0f / tanf(NH_DEG2RAD(fovy_deg) * 0.5f);
-    float aspect = gfx_display_aspect();
+    float aspect = gfx_display_aspect() * ((float)s_vp[2] / GFX_SCREEN_W) / ((float)s_vp[3] / GFX_SCREEN_H);
     float proj[16] = { f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (zfar + znear) / (znear - zfar),
                        2.0f * zfar * znear / (znear - zfar), 0, 0, -1, 0 };
     memcpy(s_proj, proj, sizeof(proj));
@@ -844,6 +869,7 @@ void gfx_draw_quad2d(GfxTexture tex, float x, float y, float w, float h, float u
     Quad *q = &s_q2d[s_nq2d++];
     q->tex = tex;
     q->flags = GFX_MAT_BLEND;
+    x = s_r2d[0] + x * s_r2d[2], y = s_r2d[1] + y * s_r2d[3], w *= s_r2d[2], h *= s_r2d[3];
     q->v[0] = (QVert){ x, y, 0, c.r, c.g, c.b, c.a, u0, v0 };
     q->v[1] = (QVert){ x + w, y, 0, c.r, c.g, c.b, c.a, u1, v0 };
     q->v[2] = (QVert){ x + w, y + h, 0, c.r, c.g, c.b, c.a, u1, v1 };
@@ -944,6 +970,8 @@ void desktop_gfx_screenshot(const char *path)
 void gfx_end_frame(void)
 {
     flush_quads(s_q3d, s_nq3d, true);
+    s_vp[0] = s_vp[1] = 0, s_vp[2] = GFX_SCREEN_W, s_vp[3] = GFX_SCREEN_H;
+    apply_viewport();
     flush_quads(s_q2d, s_nq2d, false);
     s_nq3d = s_nq2d = 0;
     uint64_t t0 = plat_time_us();

@@ -65,6 +65,12 @@ float sec_segment_capsule(NhVec3 a, NhVec3 b, NhVec3 feet, float height)
 
 uint32_t sec_tick(NhSecurity *s, const Level *L, const AiWorld *ai, const AiPlayerView *pv, float dt, NhVec3 *where)
 {
+    return sec_tick_views(s, L, ai, pv, 1, dt, where);
+}
+
+uint32_t sec_tick_views(NhSecurity *s, const Level *L, const AiWorld *ai, const AiPlayerView *views, int nviews,
+                        float dt, NhVec3 *where)
+{
     uint32_t ev = 0;
     if (s->emp_t > 0.0f)
         s->emp_t -= dt;
@@ -84,15 +90,29 @@ uint32_t sec_tick(NhSecurity *s, const Level *L, const AiWorld *ai, const AiPlay
         float s01 = ph < 0.4f ? ph / 0.4f : ph < 0.5f ? 1.0f : ph < 0.9f ? 1.0f - (ph - 0.5f) / 0.4f : 0.0f;
         c->yaw = c->base_yaw + NH_DEG2RAD(-40.0f + 80.0f * nh_smoothstep(0.0f, 1.0f, s01));
         NhVec3 fwd = nh_dir_from_yaw_pitch(c->yaw, NH_DEG2RAD(-25.0f));
-        float d;
-        float vis = ai_point_visibility(ai, c->pos, fwd, 55.0f, 15.0f, pv, &d);
+        /* The player this camera sees best. */
+        float vis = 0.0f, gain = 0.0f;
+        const AiPlayerView *pv = &views[0];
+        for (int v = 0; v < nviews; v++) {
+            const AiPlayerView *cv = &views[v];
+            float d;
+            float vv = ai_point_visibility(ai, c->pos, fwd, 55.0f, 15.0f, cv, &d);
+            if (vv <= 0.0f)
+                continue;
+            float range = 15.0f * (0.22f + 0.78f * NH_CLAMP(cv->light, 0.0f, 1.0f));
+            float df = fmaxf(0.1f, 1.0f - (d / range) * (d / range));
+            float motion = cv->speed < 0.3f ? 0.5f : cv->speed < 2.5f ? 1.0f : 1.5f;
+            float stance = cv->crouched ? 0.7f : 1.0f;
+            float gv = 1.3f * vv * df * motion * stance * (0.4f + 0.6f * cv->light) * dt * ai->difficulty;
+            if (gv > gain) {
+                gain = gv;
+                pv = cv;
+            }
+            vis = fmaxf(vis, vv);
+        }
         c->vis = vis;
         if (vis > 0.0f) {
-            float range = 15.0f * (0.22f + 0.78f * NH_CLAMP(pv->light, 0.0f, 1.0f));
-            float df = fmaxf(0.1f, 1.0f - (d / range) * (d / range));
-            float motion = pv->speed < 0.3f ? 0.5f : pv->speed < 2.5f ? 1.0f : 1.5f;
-            float stance = pv->crouched ? 0.7f : 1.0f;
-            c->sus += 1.3f * vis * df * motion * stance * (0.4f + 0.6f * pv->light) * dt * ai->difficulty;
+            c->sus += gain;
         } else {
             c->sus = fmaxf(0.0f, c->sus - dt * 0.15f);
         }
@@ -105,7 +125,10 @@ uint32_t sec_tick(NhSecurity *s, const Level *L, const AiWorld *ai, const AiPlay
         }
         s->max_sus = fmaxf(s->max_sus, c->sus);
     }
-    if (!pv->in_vent && pv->hiding_prop < 0) {
+    for (int v = 0; v < nviews; v++) {
+        const AiPlayerView *pv = &views[v];
+        if (pv->in_vent || pv->hiding_prop >= 0 || pv->cuffed)
+            continue;
         for (int i = 0; i < s->nlas; i++) {
             if (!sec_laser_live(s, L, i))
                 continue;

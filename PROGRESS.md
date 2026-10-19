@@ -205,6 +205,26 @@ open offices and 45% of archives need a second try at their furniture.
   - `--overlay` and the `overlay` line in `debug_start.txt` turn on the
     debug overlay for testing.
 
+## Local co-op and USB
+
+- **Co-op.**
+  - Two-player split screen on two Wii Remotes, in the campaign, chosen on
+    the plan screen.
+  - Shared kit and bag; caught players are cuffed and can be freed.
+  - Guards and cameras handle both players.
+  - Design is in `DESIGN.md` §14.
+  - Tested with `test_ai_coop`, scripted desktop runs (split views, the
+    partner avatar, the map in one half, pause, choosing co-op on the plan
+    screen), and on Wii: 59.9 fps with both views.
+- **USB.**
+  - The game runs and saves from whichever device the Homebrew Channel
+    launched it from.
+  - It waits for a slow USB drive to spin up, and finds its folder even
+    without a launch path.
+  - Saves are fsynced. Drives need FAT32.
+  - Dolphin can't emulate USB storage, so the USB path is untested here.
+    The SD path is tested.
+
 ## Known issues and ideas
 
 - Generating a large building takes about 7 s on the Wii; a progress bar or
@@ -213,3 +233,7 @@ open offices and 45% of archives need a second try at their furniture.
   rendering per theme would shorten the first load.
 - The `PACING.md` timeline is from the simulated player; the playtest log
   is there to replace it with real numbers.
+- In co-op the HUD is squashed to half height. It's readable but plain; a
+  dedicated compact layout would look better.
+- Player 2 has no input in the headless Dolphin used for testing (only one
+  emulated remote), so the second remote's path was tested on desktop.

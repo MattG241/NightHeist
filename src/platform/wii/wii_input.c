@@ -10,7 +10,7 @@
 
 #define STICK_DEADZONE 0.15f
 
-static bool s_rumble;
+static bool s_rumble[NH_MAX_PLAYERS];
 
 void wii_input_init(void)
 {
@@ -22,6 +22,7 @@ void wii_input_init(void)
 void wii_input_shutdown(void)
 {
     WPAD_Rumble(WPAD_CHAN_0, 0);
+    WPAD_Rumble(WPAD_CHAN_1, 0);
     WPAD_Shutdown();
 }
 
@@ -55,15 +56,20 @@ static float stick_axis(int pos, int center, int min, int max)
     return NH_CLAMP((float)(pos - center) / range, -1.0f, 1.0f);
 }
 
-void plat_input_poll(NhInput *out)
+void plat_input_poll(int player, NhInput *out)
 {
     *out = (NhInput){ 0 };
-    WPAD_ScanPads();
-
-    u32 type = 0;
-    if (WPAD_Probe(WPAD_CHAN_0, &type) != WPAD_ERR_NONE)
+    if (player == 0)
+        WPAD_ScanPads(); /* reads every remote */
+    if (player < 0 || player >= NH_MAX_PLAYERS)
         return;
-    WPADData *wd = WPAD_Data(WPAD_CHAN_0);
+    int chan = player == 0 ? WPAD_CHAN_0 : WPAD_CHAN_1;
+
+    /* Not connected (yet): this frame has no input; try again next frame. */
+    u32 type = 0;
+    if (WPAD_Probe(chan, &type) != WPAD_ERR_NONE)
+        return;
+    WPADData *wd = WPAD_Data(chan);
     if (!wd)
         return;
 
@@ -98,10 +104,10 @@ void plat_input_poll(NhInput *out)
     }
 }
 
-void plat_rumble(bool on)
+void plat_rumble(int player, bool on)
 {
-    if (on == s_rumble)
+    if (player < 0 || player >= NH_MAX_PLAYERS || on == s_rumble[player])
         return;
-    s_rumble = on;
-    WPAD_Rumble(WPAD_CHAN_0, on ? 1 : 0);
+    s_rumble[player] = on;
+    WPAD_Rumble(player == 0 ? WPAD_CHAN_0 : WPAD_CHAN_1, on ? 1 : 0);
 }

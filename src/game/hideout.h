@@ -24,6 +24,8 @@ typedef struct Hideout {
     float cursor_x, cursor_y;
     bool cursor_valid;
     uint32_t tick;
+    int players;         /* 1, or 2 for split-screen co-op */
+    bool p2_connected;   /* set by the app each frame: Wii Remote 2 is there */
 } Hideout;
 
 void hideout_init(Hideout *ho);

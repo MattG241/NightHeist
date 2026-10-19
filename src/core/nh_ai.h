@@ -82,6 +82,7 @@ typedef enum AiBark {
 typedef struct AiGuard {
     uint8_t active, arch, state, prev_state, anim, action;
     int8_t partner;         /* elite pair / dog-handler link, -1 if none */
+    uint8_t target;         /* co-op: the player view this guard is watching */
     NhVec3 pos;
     float yaw, head_yaw, speed;
     int floor;
@@ -150,6 +151,8 @@ typedef struct AiEvent {
     NhVec3 pos;
 } AiEvent;
 
+#define AI_MAX_VIEWS 2
+
 /* What the guards can know about the player this tick (filled by the game). */
 typedef struct AiPlayerView {
     NhVec3 pos;        /* feet */
@@ -159,6 +162,7 @@ typedef struct AiPlayerView {
     float light;       /* 0..1 static + torch light on the player */
     bool crouched, torch_on, in_vent, disguised;
     int hiding_prop;   /* prop index the player is hidden in, -1 if not */
+    bool cuffed;       /* co-op: caught and waiting to be freed; guards ignore them */
     bool beam_valid;
     NhVec3 beam_hit;   /* where the torch beam lands */
     const NhNoise *noises;
@@ -186,7 +190,11 @@ typedef struct AiWorld {
     NhNoise pending[8];  /* distractions queued for the next tick */
     int npending;
     int caught;          /* guard index + 1 that caught the player this heist */
+    uint8_t caught_mask; /* co-op: which player views have been caught (bit per view) */
     float player_light;  /* light on the player last tick, including guard torches */
+    float view_light[AI_MAX_VIEWS];
+    const AiPlayerView *views; /* this tick's player views (valid during ai_tick only) */
+    int nviews;
     struct {
         NhVec3 pos;
         float radius, t;  /* t: seconds left */
@@ -196,6 +204,12 @@ typedef struct AiWorld {
 void ai_init(AiWorld *w, Level *L, NhNav *nav, uint32_t seed);
 int ai_add_guard(AiWorld *w, int arch, NhVec3 pos, float yaw, const AiPatrolPt *route, int nroute);
 void ai_tick(AiWorld *w, const AiPlayerView *pv);
+/* Co-op: one view per player. Each guard watches whichever player it can see
+ * best (keeping its quarry while hunting), hears both and sees both torch
+ * beams. EV_CAUGHT and EV_FOUND_HIDING carry the view index in their arg. */
+void ai_tick_views(AiWorld *w, const AiPlayerView *views, int n);
+/* Co-op: a caught player was freed by their partner and can be caught again. */
+void ai_release_caught(AiWorld *w, int view);
 /* Events raised by the last tick (barks, alarms, caught...). */
 static inline int ai_event_count(const AiWorld *w) { return w->nev; }
 

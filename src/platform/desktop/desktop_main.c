@@ -23,15 +23,14 @@ static bool s_has_start;
 static bool s_has_job;
 static int s_job[4];
 static float s_start[5];
-static bool s_overlay;
-static uint32_t s_prev_held;
+static bool s_overlay, s_coop;
 static bool s_rumble;
 static bool load_script(const char *path);
 
 static void usage(void)
 {
     puts("nightheist [--frames N] [--screenshot PATH] [--shot-every N] [--script FILE] [--wide] [--novsync]"
-         " [--job TYPE,SIZE,SEED[,SECURITY]] [--test-level] [--overlay]"
+         " [--job TYPE,SIZE,SEED[,SECURITY]] [--test-level] [--overlay] [--coop]"
          " [--data DIR]");
 }
 
@@ -67,6 +66,8 @@ static bool parse_args(const NhPlatformArgs *args)
             g_desktop_opts.vsync = false;
         else if (!strcmp(a, "--overlay"))
             s_overlay = true;
+        else if (!strcmp(a, "--coop"))
+            s_coop = true;
         else {
             usage();
             return false;
@@ -81,7 +82,7 @@ bool plat_init(const NhPlatformArgs *args)
         return false;
     if (g_desktop_opts.script && !load_script(g_desktop_opts.script))
         return false;
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return false;
     }
@@ -127,6 +128,8 @@ bool plat_debug_job(int *type, int *size, unsigned *seed, int *security)
 
 bool plat_debug_overlay(void) { return s_overlay; }
 
+bool plat_debug_coop(void) { return s_coop; }
+
 bool plat_debug_start(float *x, float *y, float *z, float *yaw, float *pitch)
 {
     if (!s_has_start)
@@ -156,24 +159,31 @@ void plat_mem_stats(NhMemStats *out)
 /* ---- input --------------------------------------------------------------- */
 
 /* ---- scripted input (--script FILE) ----------------------------------------
- * One command per line: "<frame> <cmd> [args]". State persists until changed.
+ * One command per line: "<frame> [p2] <cmd> [args]". State persists until
+ * changed; "p2" sends the command to player 2's remote.
  *   ir X Y | noir | stick X Y | roll DEG | twist DEG | hold BTN | release BTN
  *   press BTN (one frame) | shot NAME (screenshot) | quit
  * Buttons: A B 1 2 PLUS MINUS HOME UP DOWN LEFT RIGHT Z C */
 #define SCRIPT_MAX 4096
 typedef struct ScriptCmd {
     uint32_t frame;
+    uint8_t player;
     char cmd[12];
     char arg[48];
     float a, b;
 } ScriptCmd;
 static ScriptCmd s_script[SCRIPT_MAX];
 static int s_nscript, s_script_pos;
-static struct {
+static bool s_script_p2;
+typedef struct ScriptState {
     bool ir_valid;
     float ir_x, ir_y, sx, sy, roll, twist;
     uint32_t held, pulse;
-} s_ss = { true, 320, 240, 0, 0, 0, 0, 0, 0 };
+} ScriptState;
+static ScriptState s_ss[NH_MAX_PLAYERS] = { { true, 320, 240, 0, 0, 0, 0, 0, 0 }, { true, 320, 240, 0, 0, 0, 0, 0, 0 } };
+static uint32_t s_prev[NH_MAX_PLAYERS];
+static SDL_GameController *s_pad;
+static float s_pad_x = 320.0f, s_pad_y = 240.0f;
 
 static uint32_t btn_from_name(const char *n)
 {
@@ -204,6 +214,13 @@ static bool load_script(const char *path)
             continue;
         c.frame = frame;
         char *rest = strstr(line, c.cmd) + strlen(c.cmd);
+        if (!strcmp(c.cmd, "p2")) {
+            c.player = 1;
+            s_script_p2 = true;
+            if (sscanf(rest, "%11s", c.cmd) < 1)
+                continue;
+            rest = strstr(rest, c.cmd) + strlen(c.cmd);
+        }
         sscanf(rest, "%f %f", &c.a, &c.b);
         sscanf(rest, "%47s", c.arg);
         s_script[s_nscript++] = c;
@@ -212,31 +229,33 @@ static bool load_script(const char *path)
     return true;
 }
 
-static void script_input(NhInput *out, uint32_t *held)
+/* Runs the commands due this frame (called once per frame, by player 0's poll). */
+static void script_advance(void)
 {
     uint64_t f = desktop_frame_count();
-    s_ss.pulse = 0;
+    s_ss[0].pulse = s_ss[1].pulse = 0;
     while (s_script_pos < s_nscript && s_script[s_script_pos].frame <= f) {
         const ScriptCmd *c = &s_script[s_script_pos++];
+        ScriptState *ss = &s_ss[c->player];
         if (!strcmp(c->cmd, "ir")) {
-            s_ss.ir_valid = true;
-            s_ss.ir_x = c->a;
-            s_ss.ir_y = c->b;
+            ss->ir_valid = true;
+            ss->ir_x = c->a;
+            ss->ir_y = c->b;
         } else if (!strcmp(c->cmd, "noir")) {
-            s_ss.ir_valid = false;
+            ss->ir_valid = false;
         } else if (!strcmp(c->cmd, "stick")) {
-            s_ss.sx = c->a;
-            s_ss.sy = c->b;
+            ss->sx = c->a;
+            ss->sy = c->b;
         } else if (!strcmp(c->cmd, "roll")) {
-            s_ss.roll = NH_DEG2RAD(c->a);
+            ss->roll = NH_DEG2RAD(c->a);
         } else if (!strcmp(c->cmd, "twist")) {
-            s_ss.twist = NH_DEG2RAD(c->a);
+            ss->twist = NH_DEG2RAD(c->a);
         } else if (!strcmp(c->cmd, "hold")) {
-            s_ss.held |= btn_from_name(c->arg);
+            ss->held |= btn_from_name(c->arg);
         } else if (!strcmp(c->cmd, "release")) {
-            s_ss.held &= ~btn_from_name(c->arg);
+            ss->held &= ~btn_from_name(c->arg);
         } else if (!strcmp(c->cmd, "press")) {
-            s_ss.pulse |= btn_from_name(c->arg);
+            ss->pulse |= btn_from_name(c->arg);
         } else if (!strcmp(c->cmd, "shot") && g_desktop_opts.screenshot) {
             char path[512];
             snprintf(path, sizeof(path), "%s_%s.bmp", g_desktop_opts.screenshot, c->arg);
@@ -245,91 +264,160 @@ static void script_input(NhInput *out, uint32_t *held)
             plat_request_quit();
         }
     }
-    out->ir_valid = s_ss.ir_valid;
-    out->ir_x = s_ss.ir_x;
-    out->ir_y = s_ss.ir_y;
-    out->stick_x = s_ss.sx;
-    out->stick_y = s_ss.sy;
-    out->nunchuk_roll = s_ss.roll;
-    out->remote_roll = s_ss.twist;
-    *held |= s_ss.held | s_ss.pulse;
 }
 
-void plat_input_poll(NhInput *out)
+static void script_input(int player, NhInput *out, uint32_t *held)
 {
-    SDL_Event ev;
-    while (SDL_PollEvent(&ev)) {
-        if (ev.type == SDL_QUIT)
-            s_quit = true;
-    }
+    const ScriptState *ss = &s_ss[player];
+    out->ir_valid = ss->ir_valid;
+    out->ir_x = ss->ir_x;
+    out->ir_y = ss->ir_y;
+    out->stick_x = ss->sx;
+    out->stick_y = ss->sy;
+    out->nunchuk_roll = ss->roll;
+    out->remote_roll = ss->twist;
+    *held |= ss->held | ss->pulse;
+}
 
+/* Player 1 at the keyboard and mouse. */
+static void keyboard_input(NhInput *out, uint32_t *held_out)
+{
+    uint32_t held = 0;
+    const Uint8 *k = SDL_GetKeyboardState(NULL);
+    int mx, my;
+    Uint32 mb = SDL_GetMouseState(&mx, &my);
+    int vx, vy, vw, vh;
+    desktop_gfx_viewport(&vx, &vy, &vw, &vh);
+    bool focused = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_MOUSE_FOCUS) != 0;
+    if (focused && mx >= vx && my >= vy && mx < vx + vw && my < vy + vh) {
+        out->ir_valid = true;
+        out->ir_x = (float)(mx - vx) * GFX_SCREEN_W / (float)vw;
+        out->ir_y = (float)(my - vy) * GFX_SCREEN_H / (float)vh;
+    }
+    if (mb & SDL_BUTTON(SDL_BUTTON_LEFT))
+        held |= NH_BTN_A;
+    if (mb & SDL_BUTTON(SDL_BUTTON_RIGHT))
+        held |= NH_BTN_B;
+
+    static const struct {
+        SDL_Scancode sc;
+        uint32_t btn;
+    } map[] = {
+        { SDL_SCANCODE_1, NH_BTN_1 },       { SDL_SCANCODE_2, NH_BTN_2 },
+        { SDL_SCANCODE_RETURN, NH_BTN_PLUS }, { SDL_SCANCODE_TAB, NH_BTN_MINUS },
+        { SDL_SCANCODE_ESCAPE, NH_BTN_HOME }, { SDL_SCANCODE_UP, NH_BTN_UP },
+        { SDL_SCANCODE_DOWN, NH_BTN_DOWN }, { SDL_SCANCODE_LEFT, NH_BTN_LEFT },
+        { SDL_SCANCODE_RIGHT, NH_BTN_RIGHT }, { SDL_SCANCODE_LCTRL, NH_BTN_Z },
+        { SDL_SCANCODE_RCTRL, NH_BTN_Z },   { SDL_SCANCODE_F, NH_BTN_C },
+    };
+    for (size_t i = 0; i < NH_ARRAY_LEN(map); i++)
+        if (k[map[i].sc])
+            held |= map[i].btn;
+
+    float sx = (float)(k[SDL_SCANCODE_D] - k[SDL_SCANCODE_A]);
+    float sy = (float)(k[SDL_SCANCODE_W] - k[SDL_SCANCODE_S]);
+    if (sx != 0.0f && sy != 0.0f) {
+        sx *= 0.7071f;
+        sy *= 0.7071f;
+    }
+    out->stick_x = sx;
+    out->stick_y = sy;
+    out->nunchuk_roll = NH_DEG2RAD(30.0f) * (float)(k[SDL_SCANCODE_E] - k[SDL_SCANCODE_Q]);
+    /* [ and ] turn the remote and it stays turned (like holding it at an
+     * angle); backslash levels it again. */
+    static float twist;
+    twist += NH_DEG2RAD(70.0f) / 60.0f * (float)(k[SDL_SCANCODE_RIGHTBRACKET] - k[SDL_SCANCODE_LEFTBRACKET]);
+    if (k[SDL_SCANCODE_BACKSLASH])
+        twist = 0.0f;
+    twist = NH_CLAMP(twist, NH_DEG2RAD(-80.0f), NH_DEG2RAD(80.0f));
+    out->remote_roll = twist;
+    *held_out |= held;
+}
+
+/* Player 2 on a gamepad: left stick moves, the right stick steers the
+ * pointer, A/B as on the remote, X is C, the left shoulder is Z, the
+ * triggers twist the remote. */
+static bool pad_input(NhInput *out, uint32_t *held_out)
+{
+    if (!s_pad) {
+        for (int i = 0; i < SDL_NumJoysticks() && !s_pad; i++)
+            if (SDL_IsGameController(i))
+                s_pad = SDL_GameControllerOpen(i);
+        if (!s_pad)
+            return false;
+    }
+    if (!SDL_GameControllerGetAttached(s_pad)) {
+        SDL_GameControllerClose(s_pad);
+        s_pad = NULL;
+        return false;
+    }
+    float ax[6];
+    for (int a = 0; a < 6; a++) {
+        float v = (float)SDL_GameControllerGetAxis(s_pad, (SDL_GameControllerAxis)a) / 32767.0f;
+        ax[a] = fabsf(v) < 0.15f ? 0.0f : NH_CLAMP(v, -1.0f, 1.0f);
+    }
+    out->stick_x = ax[SDL_CONTROLLER_AXIS_LEFTX];
+    out->stick_y = -ax[SDL_CONTROLLER_AXIS_LEFTY];
+    s_pad_x = NH_CLAMP(s_pad_x + ax[SDL_CONTROLLER_AXIS_RIGHTX] * 9.0f, 0.0f, (float)GFX_SCREEN_W - 1);
+    s_pad_y = NH_CLAMP(s_pad_y + ax[SDL_CONTROLLER_AXIS_RIGHTY] * 9.0f, 0.0f, (float)GFX_SCREEN_H - 1);
+    out->ir_valid = true;
+    out->ir_x = s_pad_x;
+    out->ir_y = s_pad_y;
+    out->remote_roll = NH_DEG2RAD(70.0f) * (ax[SDL_CONTROLLER_AXIS_TRIGGERRIGHT] - ax[SDL_CONTROLLER_AXIS_TRIGGERLEFT]);
+    static const struct {
+        SDL_GameControllerButton b;
+        uint32_t btn;
+    } map[] = {
+        { SDL_CONTROLLER_BUTTON_A, NH_BTN_A },          { SDL_CONTROLLER_BUTTON_B, NH_BTN_B },
+        { SDL_CONTROLLER_BUTTON_X, NH_BTN_C },          { SDL_CONTROLLER_BUTTON_LEFTSHOULDER, NH_BTN_Z },
+        { SDL_CONTROLLER_BUTTON_START, NH_BTN_PLUS },   { SDL_CONTROLLER_BUTTON_BACK, NH_BTN_MINUS },
+        { SDL_CONTROLLER_BUTTON_GUIDE, NH_BTN_HOME },   { SDL_CONTROLLER_BUTTON_DPAD_UP, NH_BTN_UP },
+        { SDL_CONTROLLER_BUTTON_DPAD_DOWN, NH_BTN_DOWN }, { SDL_CONTROLLER_BUTTON_DPAD_LEFT, NH_BTN_LEFT },
+        { SDL_CONTROLLER_BUTTON_DPAD_RIGHT, NH_BTN_RIGHT },
+    };
+    for (size_t i = 0; i < NH_ARRAY_LEN(map); i++)
+        if (SDL_GameControllerGetButton(s_pad, map[i].b))
+            *held_out |= map[i].btn;
+    return true;
+}
+
+void plat_input_poll(int player, NhInput *out)
+{
     *out = (NhInput){ 0 };
+    if (player == 0) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT)
+                s_quit = true;
+        }
+        if (g_desktop_opts.script)
+            script_advance();
+    }
+    if (player < 0 || player >= NH_MAX_PLAYERS)
+        return;
+    uint32_t held = 0;
+    if (g_desktop_opts.script) {
+        if (player == 1 && !s_script_p2)
+            return;
+        script_input(player, out, &held);
+    } else if (player == 0) {
+        keyboard_input(out, &held);
+    } else if (!pad_input(out, &held)) {
+        return;
+    }
     out->connected = true;
     out->nunchuk = true;
-    uint32_t held = 0;
-
-    if (g_desktop_opts.script) {
-        script_input(out, &held);
-    } else {
-        const Uint8 *k = SDL_GetKeyboardState(NULL);
-        int mx, my;
-        Uint32 mb = SDL_GetMouseState(&mx, &my);
-        int vx, vy, vw, vh;
-        desktop_gfx_viewport(&vx, &vy, &vw, &vh);
-        bool focused = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_MOUSE_FOCUS) != 0;
-        if (focused && mx >= vx && my >= vy && mx < vx + vw && my < vy + vh) {
-            out->ir_valid = true;
-            out->ir_x = (float)(mx - vx) * GFX_SCREEN_W / (float)vw;
-            out->ir_y = (float)(my - vy) * GFX_SCREEN_H / (float)vh;
-        }
-        if (mb & SDL_BUTTON(SDL_BUTTON_LEFT))
-            held |= NH_BTN_A;
-        if (mb & SDL_BUTTON(SDL_BUTTON_RIGHT))
-            held |= NH_BTN_B;
-
-        static const struct {
-            SDL_Scancode sc;
-            uint32_t btn;
-        } map[] = {
-            { SDL_SCANCODE_1, NH_BTN_1 },       { SDL_SCANCODE_2, NH_BTN_2 },
-            { SDL_SCANCODE_RETURN, NH_BTN_PLUS }, { SDL_SCANCODE_TAB, NH_BTN_MINUS },
-            { SDL_SCANCODE_ESCAPE, NH_BTN_HOME }, { SDL_SCANCODE_UP, NH_BTN_UP },
-            { SDL_SCANCODE_DOWN, NH_BTN_DOWN }, { SDL_SCANCODE_LEFT, NH_BTN_LEFT },
-            { SDL_SCANCODE_RIGHT, NH_BTN_RIGHT }, { SDL_SCANCODE_LCTRL, NH_BTN_Z },
-            { SDL_SCANCODE_RCTRL, NH_BTN_Z },   { SDL_SCANCODE_F, NH_BTN_C },
-        };
-        for (size_t i = 0; i < NH_ARRAY_LEN(map); i++)
-            if (k[map[i].sc])
-                held |= map[i].btn;
-
-        float sx = (float)(k[SDL_SCANCODE_D] - k[SDL_SCANCODE_A]);
-        float sy = (float)(k[SDL_SCANCODE_W] - k[SDL_SCANCODE_S]);
-        if (sx != 0.0f && sy != 0.0f) {
-            sx *= 0.7071f;
-            sy *= 0.7071f;
-        }
-        out->stick_x = sx;
-        out->stick_y = sy;
-        out->nunchuk_roll = NH_DEG2RAD(30.0f) * (float)(k[SDL_SCANCODE_E] - k[SDL_SCANCODE_Q]);
-        /* [ and ] turn the remote and it stays turned (like holding it at an
-         * angle); backslash levels it again. */
-        static float twist;
-        twist += NH_DEG2RAD(70.0f) / 60.0f * (float)(k[SDL_SCANCODE_RIGHTBRACKET] - k[SDL_SCANCODE_LEFTBRACKET]);
-        if (k[SDL_SCANCODE_BACKSLASH])
-            twist = 0.0f;
-        twist = NH_CLAMP(twist, NH_DEG2RAD(-80.0f), NH_DEG2RAD(80.0f));
-        out->remote_roll = twist;
-    }
-
     out->held = held;
-    out->pressed = held & ~s_prev_held;
-    out->released = s_prev_held & ~held;
-    s_prev_held = held;
+    out->pressed = held & ~s_prev[player];
+    out->released = s_prev[player] & ~held;
+    s_prev[player] = held;
 }
 
-void plat_rumble(bool on)
+void plat_rumble(int player, bool on)
 {
-    if (on == s_rumble)
+    if (player == 1 && s_pad)
+        SDL_GameControllerRumble(s_pad, on ? 0x6000 : 0, on ? 0x6000 : 0, on ? 200 : 0);
+    if (player != 0 || on == s_rumble)
         return;
     s_rumble = on;
     SDL_SetWindowTitle(g_window, on ? "Night Heist [RUMBLE]" : "Night Heist");

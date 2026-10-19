@@ -44,6 +44,9 @@ enum { SEC_EV_CAMERA = 1u << 0, SEC_EV_LASER = 1u << 1, SEC_EV_ENTRY_TIMEOUT = 1
 void sec_init(NhSecurity *s, const Level *L, const NhPlan *plan);
 /* Returns SEC_EV_* bits; *where gets the position the event refers to. */
 uint32_t sec_tick(NhSecurity *s, const Level *L, const AiWorld *ai, const AiPlayerView *pv, float dt, NhVec3 *where);
+/* Co-op: cameras and lasers against every player. */
+uint32_t sec_tick_views(NhSecurity *s, const Level *L, const AiWorld *ai, const AiPlayerView *views, int nviews,
+                        float dt, NhVec3 *where);
 bool sec_camera_live(const NhSecurity *s, const Level *L, int i);
 bool sec_laser_live(const NhSecurity *s, const Level *L, int i);
 void sec_door_opened(NhSecurity *s, const Level *L, int door);
