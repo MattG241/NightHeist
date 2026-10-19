@@ -1,0 +1,627 @@
+{
+ "models": {
+  "alarm_panel": {
+   "src": "src/props/alarm_panel.gltf"
+  },
+  "armchair": {
+   "src": "src/props/armchair.gltf"
+  },
+  "bank_counter": {
+   "src": "src/props/bank_counter.gltf"
+  },
+  "barrel": {
+   "src": "src/props/barrel.gltf"
+  },
+  "bed": {
+   "src": "src/props/bed.gltf"
+  },
+  "bench": {
+   "src": "src/props/bench.gltf"
+  },
+  "bookshelf": {
+   "src": "src/props/bookshelf.gltf"
+  },
+  "car": {
+   "src": "src/props/car.gltf"
+  },
+  "cash_stack": {
+   "src": "src/props/cash_stack.gltf"
+  },
+  "ceiling_lamp": {
+   "src": "src/props/ceiling_lamp.gltf"
+  },
+  "coffee_machine": {
+   "src": "src/props/coffee_machine.gltf"
+  },
+  "coffee_table": {
+   "src": "src/props/coffee_table.gltf"
+  },
+  "computer": {
+   "src": "src/props/computer.gltf"
+  },
+  "conference_table": {
+   "src": "src/props/conference_table.gltf"
+  },
+  "crate": {
+   "src": "src/props/crate.gltf"
+  },
+  "crate_stack": {
+   "src": "src/props/crate_stack.gltf"
+  },
+  "desk": {
+   "src": "src/props/desk.gltf"
+  },
+  "display_case": {
+   "src": "src/props/display_case.gltf"
+  },
+  "documents": {
+   "src": "src/props/documents.gltf"
+  },
+  "dog": {
+   "anims": true,
+   "src": "src/chars/dog.gltf"
+  },
+  "door_glass": {
+   "src": "src/props/door_glass.gltf"
+  },
+  "door_metal": {
+   "src": "src/props/door_metal.gltf"
+  },
+  "door_shutter": {
+   "src": "src/props/door_shutter.gltf"
+  },
+  "door_vault": {
+   "src": "src/props/door_vault.gltf"
+  },
+  "door_wood": {
+   "src": "src/props/door_wood.gltf"
+  },
+  "dumpster": {
+   "src": "src/props/dumpster.gltf"
+  },
+  "filing_cabinet": {
+   "src": "src/props/filing_cabinet.gltf"
+  },
+  "fridge": {
+   "src": "src/props/fridge.gltf"
+  },
+  "fuse_box": {
+   "src": "src/props/fuse_box.gltf"
+  },
+  "gold_bars": {
+   "src": "src/props/gold_bars.gltf"
+  },
+  "guard": {
+   "anims": true,
+   "src": "src/chars/guard.gltf"
+  },
+  "hard_drive": {
+   "src": "src/props/hard_drive.gltf"
+  },
+  "jewelry_box": {
+   "src": "src/props/jewelry_box.gltf"
+  },
+  "keypad": {
+   "src": "src/props/keypad.gltf"
+  },
+  "kitchen_counter": {
+   "src": "src/props/kitchen_counter.gltf"
+  },
+  "ladder": {
+   "src": "src/props/ladder.gltf"
+  },
+  "lamp_floor": {
+   "src": "src/props/lamp_floor.gltf"
+  },
+  "laptop": {
+   "src": "src/props/laptop.gltf"
+  },
+  "laser_emitter": {
+   "src": "src/props/laser_emitter.gltf"
+  },
+  "locker": {
+   "src": "src/props/locker.gltf"
+  },
+  "office_chair": {
+   "src": "src/props/office_chair.gltf"
+  },
+  "painting": {
+   "src": "src/props/painting.gltf"
+  },
+  "pallet_rack": {
+   "src": "src/props/pallet_rack.gltf"
+  },
+  "pedestal": {
+   "src": "src/props/pedestal.gltf"
+  },
+  "phone": {
+   "src": "src/props/phone.gltf"
+  },
+  "piano": {
+   "src": "src/props/piano.gltf"
+  },
+  "plant": {
+   "src": "src/props/plant.gltf"
+  },
+  "reception_desk": {
+   "src": "src/props/reception_desk.gltf"
+  },
+  "safe": {
+   "src": "src/props/safe.gltf"
+  },
+  "security_camera": {
+   "src": "src/props/security_camera.gltf"
+  },
+  "server_rack": {
+   "src": "src/props/server_rack.gltf"
+  },
+  "sink": {
+   "src": "src/props/sink.gltf"
+  },
+  "sofa": {
+   "src": "src/props/sofa.gltf"
+  },
+  "statue": {
+   "src": "src/props/statue.gltf"
+  },
+  "streetlight": {
+   "src": "src/props/streetlight.gltf"
+  },
+  "terminal": {
+   "src": "src/props/terminal.gltf"
+  },
+  "toilet_stall": {
+   "src": "src/props/toilet_stall.gltf"
+  },
+  "trash_bin": {
+   "src": "src/props/trash_bin.gltf"
+  },
+  "tv": {
+   "src": "src/props/tv.gltf"
+  },
+  "vent_grate": {
+   "src": "src/props/vent_grate.gltf"
+  },
+  "wardrobe": {
+   "src": "src/props/wardrobe.gltf"
+  },
+  "watch_case": {
+   "src": "src/props/watch_case.gltf"
+  },
+  "water_cooler": {
+   "src": "src/props/water_cooler.gltf"
+  },
+  "wine_rack": {
+   "src": "src/props/wine_rack.gltf"
+  }
+ },
+ "textures": {
+  "asphalt": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/asphalt.png",
+   "wrap": true
+  },
+  "beam": {
+   "filter": true,
+   "fmt": "IA8",
+   "mips": false,
+   "size": 64,
+   "src": "src/tex/beam.png",
+   "wrap": false
+  },
+  "blob": {
+   "filter": true,
+   "fmt": "IA8",
+   "mips": false,
+   "size": 64,
+   "src": "src/tex/blob.png",
+   "wrap": false
+  },
+  "brick": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/brick.png",
+   "wrap": true
+  },
+  "brick_white": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/brick_white.png",
+   "wrap": true
+  },
+  "carpet": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/carpet.png",
+   "wrap": true
+  },
+  "cash": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/cash.png",
+   "wrap": true
+  },
+  "ceiling": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/ceiling.png",
+   "wrap": true
+  },
+  "cloth": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/cloth.png",
+   "wrap": true
+  },
+  "concrete": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/concrete.png",
+   "wrap": true
+  },
+  "cookie": {
+   "filter": true,
+   "fmt": "I8",
+   "mips": false,
+   "size": 128,
+   "src": "src/tex/cookie.png",
+   "wrap": false
+  },
+  "corrugated": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/corrugated.png",
+   "wrap": true
+  },
+  "dust": {
+   "filter": true,
+   "fmt": "IA8",
+   "mips": false,
+   "size": 32,
+   "src": "src/tex/dust.png",
+   "wrap": false
+  },
+  "fabric": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/fabric.png",
+   "wrap": true
+  },
+  "facade": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/facade.png",
+   "wrap": true
+  },
+  "garage": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/garage.png",
+   "wrap": true
+  },
+  "glass": {
+   "filter": true,
+   "fmt": "RGB5A3",
+   "mips": true,
+   "size": 64,
+   "src": "src/tex/glass.png",
+   "wrap": true
+  },
+  "glow": {
+   "filter": true,
+   "fmt": "IA8",
+   "mips": false,
+   "size": 64,
+   "src": "src/tex/glow.png",
+   "wrap": false
+  },
+  "glow_panel": {
+   "filter": true,
+   "fmt": "RGB565",
+   "mips": true,
+   "size": 16,
+   "src": "src/tex/glow_panel.png",
+   "wrap": true
+  },
+  "gold": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/gold.png",
+   "wrap": true
+  },
+  "granite": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/granite.png",
+   "wrap": true
+  },
+  "grass": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/grass.png",
+   "wrap": true
+  },
+  "leather": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/leather.png",
+   "wrap": true
+  },
+  "linoleum": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/linoleum.png",
+   "wrap": true
+  },
+  "marble": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/marble.png",
+   "wrap": true
+  },
+  "marble_tiles": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/marble_tiles.png",
+   "wrap": true
+  },
+  "metal": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/metal.png",
+   "wrap": true
+  },
+  "painting0": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/painting0.png",
+   "wrap": true
+  },
+  "painting1": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/painting1.png",
+   "wrap": true
+  },
+  "painting2": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/painting2.png",
+   "wrap": true
+  },
+  "painting3": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/painting3.png",
+   "wrap": true
+  },
+  "painting4": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/painting4.png",
+   "wrap": true
+  },
+  "painting5": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/painting5.png",
+   "wrap": true
+  },
+  "panel": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/panel.png",
+   "wrap": true
+  },
+  "paper": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/paper.png",
+   "wrap": true
+  },
+  "parquet": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/parquet.png",
+   "wrap": true
+  },
+  "pavement": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/pavement.png",
+   "wrap": true
+  },
+  "planks": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/planks.png",
+   "wrap": true
+  },
+  "plaster": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/plaster.png",
+   "wrap": true
+  },
+  "plaster_beige": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/plaster_beige.png",
+   "wrap": true
+  },
+  "plastic": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/plastic.png",
+   "wrap": true
+  },
+  "roof": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/roof.png",
+   "wrap": true
+  },
+  "rust": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/rust.png",
+   "wrap": true
+  },
+  "screen": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/screen.png",
+   "wrap": true
+  },
+  "sign_exit": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": [
+    128,
+    64
+   ],
+   "src": "src/tex/sign_exit.png",
+   "wrap": true
+  },
+  "skin": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/skin.png",
+   "wrap": true
+  },
+  "slats": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/slats.png",
+   "wrap": true
+  },
+  "stucco": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/stucco.png",
+   "wrap": true
+  },
+  "tiles": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 256,
+   "src": "src/tex/tiles.png",
+   "wrap": true
+  },
+  "veneer": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/veneer.png",
+   "wrap": true
+  },
+  "wallpaper": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/wallpaper.png",
+   "wrap": true
+  },
+  "white": {
+   "filter": true,
+   "fmt": "I8",
+   "mips": false,
+   "size": 8,
+   "src": "src/tex/white.png",
+   "wrap": true
+  },
+  "wood": {
+   "filter": true,
+   "fmt": "CMPR",
+   "mips": true,
+   "size": 128,
+   "src": "src/tex/wood.png",
+   "wrap": true
+  }
+ }
+}

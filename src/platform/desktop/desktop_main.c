@@ -15,16 +15,18 @@
 #include "platform/gfx.h"
 #include "platform/platform.h"
 
-DesktopOptions g_desktop_opts = { 0, NULL, false, false, true, "apps/NightHeist" };
+DesktopOptions g_desktop_opts = { 0, NULL, 0, NULL, false, false, true, "apps/NightHeist" };
 SDL_Window *g_window;
 
 static bool s_quit;
 static uint32_t s_prev_held;
 static bool s_rumble;
+static bool load_script(const char *path);
 
 static void usage(void)
 {
-    puts("nightheist [--frames N] [--screenshot out.bmp] [--autotest] [--wide] [--novsync] [--data DIR]");
+    puts("nightheist [--frames N] [--screenshot PATH] [--shot-every N] [--script FILE] [--wide] [--novsync]"
+         " [--data DIR]");
 }
 
 static bool parse_args(const NhPlatformArgs *args)
@@ -38,8 +40,10 @@ static bool parse_args(const NhPlatformArgs *args)
             g_desktop_opts.screenshot = args->argv[++i];
         else if (!strcmp(a, "--data") && has_next)
             g_desktop_opts.data_dir = args->argv[++i];
-        else if (!strcmp(a, "--autotest"))
-            g_desktop_opts.autotest = true;
+        else if (!strcmp(a, "--script") && has_next)
+            g_desktop_opts.script = args->argv[++i];
+        else if (!strcmp(a, "--shot-every") && has_next)
+            g_desktop_opts.shot_every = atoi(args->argv[++i]);
         else if (!strcmp(a, "--wide"))
             g_desktop_opts.wide = true;
         else if (!strcmp(a, "--novsync"))
@@ -55,6 +59,8 @@ static bool parse_args(const NhPlatformArgs *args)
 bool plat_init(const NhPlatformArgs *args)
 {
     if (!parse_args(args))
+        return false;
+    if (g_desktop_opts.script && !load_script(g_desktop_opts.script))
         return false;
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -105,21 +111,104 @@ void plat_mem_stats(NhMemStats *out)
 
 /* ---- input --------------------------------------------------------------- */
 
-/* Scripted input for --autotest: exercises pointer, stick, buttons and lean
- * deterministically by frame number so screenshots are reproducible. */
-static void autotest_input(NhInput *out, uint32_t *held)
+/* ---- scripted input (--script FILE) ----------------------------------------
+ * One command per line: "<frame> <cmd> [args]". State persists until changed.
+ *   ir X Y | noir | stick X Y | roll DEG | twist DEG | hold BTN | release BTN
+ *   press BTN (one frame) | shot NAME (screenshot) | quit
+ * Buttons: A B 1 2 PLUS MINUS HOME UP DOWN LEFT RIGHT Z C */
+#define SCRIPT_MAX 4096
+typedef struct ScriptCmd {
+    uint32_t frame;
+    char cmd[12];
+    char arg[48];
+    float a, b;
+} ScriptCmd;
+static ScriptCmd s_script[SCRIPT_MAX];
+static int s_nscript, s_script_pos;
+static struct {
+    bool ir_valid;
+    float ir_x, ir_y, sx, sy, roll, twist;
+    uint32_t held, pulse;
+} s_ss = { true, 320, 240, 0, 0, 0, 0, 0, 0 };
+
+static uint32_t btn_from_name(const char *n)
+{
+    static const struct {
+        const char *n;
+        uint32_t b;
+    } t[] = { { "A", NH_BTN_A }, { "B", NH_BTN_B }, { "1", NH_BTN_1 }, { "2", NH_BTN_2 }, { "PLUS", NH_BTN_PLUS },
+              { "MINUS", NH_BTN_MINUS }, { "HOME", NH_BTN_HOME }, { "UP", NH_BTN_UP }, { "DOWN", NH_BTN_DOWN },
+              { "LEFT", NH_BTN_LEFT }, { "RIGHT", NH_BTN_RIGHT }, { "Z", NH_BTN_Z }, { "C", NH_BTN_C } };
+    for (size_t i = 0; i < NH_ARRAY_LEN(t); i++)
+        if (!strcmp(t[i].n, n))
+            return t[i].b;
+    return 0;
+}
+
+static bool load_script(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "cannot open script %s\n", path);
+        return false;
+    }
+    char line[160];
+    while (fgets(line, sizeof(line), f) && s_nscript < SCRIPT_MAX) {
+        ScriptCmd c = { 0 };
+        unsigned frame;
+        if (line[0] == '#' || sscanf(line, "%u %11s", &frame, c.cmd) < 2)
+            continue;
+        c.frame = frame;
+        char *rest = strstr(line, c.cmd) + strlen(c.cmd);
+        sscanf(rest, "%f %f", &c.a, &c.b);
+        sscanf(rest, "%47s", c.arg);
+        s_script[s_nscript++] = c;
+    }
+    fclose(f);
+    return true;
+}
+
+static void script_input(NhInput *out, uint32_t *held)
 {
     uint64_t f = desktop_frame_count();
-    float t = (float)f / 60.0f;
-    out->ir_valid = (f / 90) % 4 != 3; /* lose IR for a while to test the hold */
-    out->ir_x = 320.0f + 150.0f * cosf(t * 1.3f);
-    out->ir_y = 260.0f + 60.0f * sinf(t * 1.7f);
-    out->stick_y = (f > 30 && f < 70) ? -1.0f : 0.0f;
-    out->nunchuk_roll = NH_DEG2RAD(20.0f * sinf(t));
-    if (f % 45 == 10)
-        *held |= NH_BTN_A;
-    if (f >= 100 && f < 110)
-        *held |= NH_BTN_Z;
+    s_ss.pulse = 0;
+    while (s_script_pos < s_nscript && s_script[s_script_pos].frame <= f) {
+        const ScriptCmd *c = &s_script[s_script_pos++];
+        if (!strcmp(c->cmd, "ir")) {
+            s_ss.ir_valid = true;
+            s_ss.ir_x = c->a;
+            s_ss.ir_y = c->b;
+        } else if (!strcmp(c->cmd, "noir")) {
+            s_ss.ir_valid = false;
+        } else if (!strcmp(c->cmd, "stick")) {
+            s_ss.sx = c->a;
+            s_ss.sy = c->b;
+        } else if (!strcmp(c->cmd, "roll")) {
+            s_ss.roll = NH_DEG2RAD(c->a);
+        } else if (!strcmp(c->cmd, "twist")) {
+            s_ss.twist = NH_DEG2RAD(c->a);
+        } else if (!strcmp(c->cmd, "hold")) {
+            s_ss.held |= btn_from_name(c->arg);
+        } else if (!strcmp(c->cmd, "release")) {
+            s_ss.held &= ~btn_from_name(c->arg);
+        } else if (!strcmp(c->cmd, "press")) {
+            s_ss.pulse |= btn_from_name(c->arg);
+        } else if (!strcmp(c->cmd, "shot") && g_desktop_opts.screenshot) {
+            char path[512];
+            snprintf(path, sizeof(path), "%s_%s.bmp", g_desktop_opts.screenshot, c->arg);
+            desktop_gfx_screenshot(path);
+        } else if (!strcmp(c->cmd, "quit")) {
+            plat_request_quit();
+        }
+    }
+    out->ir_valid = s_ss.ir_valid;
+    out->ir_x = s_ss.ir_x;
+    out->ir_y = s_ss.ir_y;
+    out->stick_x = s_ss.sx;
+    out->stick_y = s_ss.sy;
+    out->nunchuk_roll = s_ss.roll;
+    out->remote_roll = s_ss.twist;
+    *held |= s_ss.held | s_ss.pulse;
 }
 
 void plat_input_poll(NhInput *out)
@@ -135,8 +224,8 @@ void plat_input_poll(NhInput *out)
     out->nunchuk = true;
     uint32_t held = 0;
 
-    if (g_desktop_opts.autotest) {
-        autotest_input(out, &held);
+    if (g_desktop_opts.script) {
+        script_input(out, &held);
     } else {
         const Uint8 *k = SDL_GetKeyboardState(NULL);
         int mx, my;

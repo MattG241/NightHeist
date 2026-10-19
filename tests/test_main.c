@@ -15,7 +15,12 @@ int nh_test_checks;
     X(test_texconv)            \
     X(test_meshgen)            \
     X(test_font)               \
-    X(test_demo_sim)
+    X(test_level)              \
+    X(test_kit)                \
+    X(test_portals)            \
+    X(test_bake)               \
+    X(test_player)             \
+    X(test_assets)
 
 #define X(name) void name(void);
 TESTS(X)

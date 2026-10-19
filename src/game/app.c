@@ -3,39 +3,67 @@
 #include "app.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "core/nh_arena.h"
 #include "core/nh_fixedstep.h"
-#include "demo_scene.h"
-#include "demo_sim.h"
+#include "heist.h"
 #include "platform/gfx.h"
+#include "res.h"
 #include "text.h"
 
-#define LOAD_ARENA_SIZE (4u * 1024u * 1024u)
+#define PERSIST_SIZE (8u << 20)
+#define LEVEL_SIZE (22u << 20)
+#define SCRATCH_SIZE (16u << 20)
 
-/* Scratch memory for load-time generation; reset after each asset is built. */
-static _Alignas(32) uint8_t s_load_mem[LOAD_ARENA_SIZE];
+static NhArena s_persist, s_level, s_scratch;
+static Heist s_heist;
+static GameSettings s_settings;
+
+static bool make_arena(NhArena *a, size_t size)
+{
+    uint8_t *raw = malloc(size + 32);
+    if (!raw)
+        return false;
+    uint8_t *aligned = (uint8_t *)NH_ALIGN_UP((uintptr_t)raw, 32);
+    nh_arena_init(a, aligned, size);
+    return true;
+}
+
+static void loading_screen(const char *msg)
+{
+    gfx_begin_frame(nh_rgba(0, 0, 0, 255));
+    text_draw(320 - text_width("NIGHT HEIST", 4) * 0.5f, 200, 4, nh_rgba(255, 210, 120, 255), "NIGHT HEIST");
+    text_draw(320 - text_width(msg, 2) * 0.5f, 260, 2, nh_rgba(170, 170, 180, 255), msg);
+    gfx_end_frame();
+}
 
 int nh_app_run(const NhPlatformArgs *args)
 {
     if (!plat_init(args))
         return 1;
-
-    NhArena scratch;
-    nh_arena_init(&scratch, s_load_mem, sizeof(s_load_mem));
-    if (!text_init(&scratch) || !demo_scene_load(&scratch)) {
+    if (!make_arena(&s_persist, PERSIST_SIZE) || !make_arena(&s_level, LEVEL_SIZE) ||
+        !make_arena(&s_scratch, SCRATCH_SIZE)) {
         plat_shutdown();
         return 2;
     }
+    res_init(&s_persist, &s_scratch);
+    if (!text_init(&s_scratch)) {
+        plat_shutdown();
+        return 3;
+    }
+    nh_controls_default(&s_settings.controls);
+    s_settings.rumble = true;
+    s_settings.subtitles = true;
+    s_settings.music_volume = s_settings.sfx_volume = 0.8f;
 
-    /* Prove storage works without writing anything: read our own meta.xml. */
-    static char meta_buf[4096];
-    char path[256];
-    snprintf(path, sizeof(path), "%s/meta.xml", plat_data_dir());
-    long meta_bytes = plat_storage_ready() ? plat_file_read(path, meta_buf, sizeof(meta_buf)) : -1;
-
-    DemoSim sim;
-    demo_sim_init(&sim);
+    loading_screen("building the test building...");
+    if (!heist_start_test(&s_heist, &s_level, &s_scratch)) {
+        fprintf(stderr, "failed to build the level\n");
+        plat_shutdown();
+        return 4;
+    }
 
     NhFixedStep step;
     nh_fixedstep_init(&step);
@@ -63,10 +91,8 @@ int nh_app_run(const NhPlatformArgs *args)
             tick_in.pressed = pending_pressed;
             tick_in.released = pending_released;
             pending_pressed = pending_released = 0;
-            demo_sim_tick(&sim, &tick_in);
-            demo_scene_handle_events(&sim, sim.events);
+            heist_tick(&s_heist, &tick_in, &s_settings);
         }
-        plat_rumble(sim.rumble_ticks > 0);
 
         fps_frames++;
         if (now - fps_start >= 1000000u) {
@@ -74,11 +100,10 @@ int nh_app_run(const NhPlatformArgs *args)
             fps_frames = 0;
             fps_start = now;
         }
-
-        DemoFrameInfo info = { &in, fps, nh_fixedstep_alpha(&step), plat_storage_ready(), meta_bytes };
-        demo_scene_render(&sim, &info);
+        heist_render(&s_heist, nh_fixedstep_alpha(&step), &s_settings, fps);
     }
 
+    heist_end(&s_heist);
     plat_rumble(false);
     plat_shutdown();
     return 0;

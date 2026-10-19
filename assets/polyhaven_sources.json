@@ -1,0 +1,157 @@
+{
+  "asphalt": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/asphalt_02",
+    "polyhaven_id": "asphalt_02"
+  },
+  "brick": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/large_red_bricks",
+    "polyhaven_id": "large_red_bricks"
+  },
+  "brick_white": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/patterned_plaster_wall",
+    "polyhaven_id": "patterned_plaster_wall"
+  },
+  "carpet": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/dirty_carpet",
+    "polyhaven_id": "dirty_carpet"
+  },
+  "ceiling": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/ceiling_interior",
+    "polyhaven_id": "ceiling_interior"
+  },
+  "concrete": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/concrete_floor_02",
+    "polyhaven_id": "concrete_floor_02"
+  },
+  "corrugated": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/corrugated_iron",
+    "polyhaven_id": "corrugated_iron"
+  },
+  "fabric": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/rough_linen",
+    "polyhaven_id": "rough_linen"
+  },
+  "facade": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/concrete_tile_facade",
+    "polyhaven_id": "concrete_tile_facade"
+  },
+  "garage": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/garage_floor",
+    "polyhaven_id": "garage_floor"
+  },
+  "granite": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/granite_tile",
+    "polyhaven_id": "granite_tile"
+  },
+  "grass": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/sparse_grass",
+    "polyhaven_id": "sparse_grass"
+  },
+  "leather": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/brown_leather",
+    "polyhaven_id": "brown_leather"
+  },
+  "linoleum": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/linoleum_brown",
+    "polyhaven_id": "linoleum_brown"
+  },
+  "marble": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/marble_01",
+    "polyhaven_id": "marble_01"
+  },
+  "marble_tiles": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/marble_tiles",
+    "polyhaven_id": "marble_tiles"
+  },
+  "metal": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/metal_plate",
+    "polyhaven_id": "metal_plate"
+  },
+  "panel": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/dark_paneled_wood",
+    "polyhaven_id": "dark_paneled_wood"
+  },
+  "parquet": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/herringbone_parquet",
+    "polyhaven_id": "herringbone_parquet"
+  },
+  "pavement": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/concrete_pavement",
+    "polyhaven_id": "concrete_pavement"
+  },
+  "planks": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/brown_planks_03",
+    "polyhaven_id": "brown_planks_03"
+  },
+  "plaster": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/plastered_wall_02",
+    "polyhaven_id": "plastered_wall_02"
+  },
+  "plaster_beige": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/beige_wall_001",
+    "polyhaven_id": "beige_wall_001"
+  },
+  "roof": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/bitumen",
+    "polyhaven_id": "bitumen"
+  },
+  "rust": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/grey_cartago_01",
+    "polyhaven_id": "grey_cartago_01"
+  },
+  "slats": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/rusty_metal",
+    "polyhaven_id": "rusty_metal"
+  },
+  "stucco": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/white_stucco",
+    "polyhaven_id": "white_stucco"
+  },
+  "tiles": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/interior_tiles",
+    "polyhaven_id": "interior_tiles"
+  },
+  "veneer": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/black_walnut_veneer_01",
+    "polyhaven_id": "black_walnut_veneer_01"
+  },
+  "wallpaper": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/floral_jacquard",
+    "polyhaven_id": "floral_jacquard"
+  },
+  "wood": {
+    "license": "CC0 1.0",
+    "page": "https://polyhaven.com/a/kitchen_wood",
+    "polyhaven_id": "kitchen_wood"
+  }
+}

@@ -8,6 +8,8 @@
 typedef struct DesktopOptions {
     int frames;              /* > 0: quit after this many frames (automated runs) */
     const char *screenshot;  /* save the final frame as BMP here */
+    int shot_every;          /* > 0: also save every Nth frame as <screenshot>.NNNNN.bmp */
+    const char *script;      /* scripted input file for automated runs */
     bool autotest;           /* drive input from a scripted sequence */
     bool wide;               /* emulate a 16:9 Wii (anamorphic) */
     bool vsync;
@@ -22,6 +24,7 @@ void desktop_gfx_shutdown(void);
 /* Rectangle (window pixels) where the 640x480 image is shown. */
 void desktop_gfx_viewport(int *x, int *y, int *w, int *h);
 uint64_t desktop_frame_count(void);
+void desktop_gfx_screenshot(const char *path);
 
 bool desktop_audio_init(void);
 void desktop_audio_shutdown(void);
